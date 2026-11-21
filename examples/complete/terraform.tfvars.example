@@ -1,0 +1,21 @@
+# Copy to terraform.tfvars and fill in. terraform.tfvars is git-ignored.
+
+name   = "acme-studio"
+region = "us-west-2"
+
+# From the studio: Settings → Environments → Add environment.
+studio_role_arn = "arn:aws:iam::<temperwork account>:role/<studio role>"
+external_id     = "<the random external id the form suggests>"
+
+# Browsers outside AWS need the VPN to open your files (billed by the hour).
+vpn = false
+
+# Zones that offer your GPU instance type (not every zone has every type).
+# zone_names = ["us-west-2b", "us-west-2c"]
+
+# judge_models           = ["qwen3-vl-8b"]
+# enroll_token_parameter = "/studio/enroll-token"
+
+tags = {
+  project = "temperwork"
+}

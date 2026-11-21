@@ -1,0 +1,25 @@
+# Terraform
+.terraform/
+*.tfstate
+*.tfstate.*
+crash.log
+crash.*.log
+*.tfvars
+*.tfvars.json
+!*.tfvars.example
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+.terraformrc
+terraform.rc
+
+# Provider lock files are created by your own `terraform init`; commit yours
+# in your own copy, not here
+.terraform.lock.hcl
+
+# VPN client configurations hold a private key
+*.ovpn
+
+# A bucket policy you exported for examples/existing-network
+existing-policy.json

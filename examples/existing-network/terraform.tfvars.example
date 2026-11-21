@@ -1,0 +1,29 @@
+# Copy to terraform.tfvars and fill in. terraform.tfvars is git-ignored.
+
+name   = "acme-studio"
+region = "us-west-2"
+
+# From the studio: Settings → Environments → Add environment.
+studio_role_arn = "arn:aws:iam::<temperwork account>:role/<studio role>"
+external_id     = "<the random external id the form suggests>"
+
+# Either: browsers reach S3 through your VPC endpoint(s) (on your VPN or in the VPC)
+browser_access   = "vpce"
+vpc_endpoint_ids = ["vpce-0123456789abcdef0"]
+
+# Or: browsers reach S3 from your office / VPN egress addresses
+# browser_access = "ip"
+# browser_cidrs  = ["203.0.113.0/24"]
+
+# Use a bucket you already have. Its bucket policy is replaced, so pass the
+# current one to keep its statements:
+#   aws s3api get-bucket-policy --bucket acme-ml-data --query Policy --output text > existing-policy.json
+# bucket                      = "acme-ml-data"
+# existing_bucket_policy_file = "existing-policy.json"
+
+# EKS Pod Identity:
+# worker_principals = ["ec2.amazonaws.com", "ecs-tasks.amazonaws.com", "pods.eks.amazonaws.com"]
+
+tags = {
+  project = "temperwork"
+}

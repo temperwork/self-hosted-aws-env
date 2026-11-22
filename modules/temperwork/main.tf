@@ -33,16 +33,15 @@ locals {
   control_prefix = ".studio/" # the workers expect the control URI to end in .studio/
   control_uri    = "s3://${local.control}/${local.control_prefix}"
 
-  # The data bucket policy's test for "outside your network", by mode. A
-  # request through a VPC endpoint carries aws:SourceVpce and no
-  # aws:SourceIp, and a negated condition on a missing key is true: so in ip
-  # mode a request through any VPC endpoint (one in another account's VPC
-  # included) is denied too, and in vpce mode any request from the internet.
+  # The data bucket policy's test for "outside your network": not through
+  # one of your VPC endpoints. A request from the internet carries no
+  # aws:SourceVpce, and a negated condition on a missing key is true, so it
+  # is denied. (test_mode_access = ip tests the source IP instead.)
   outside = {
     vpce = { test = "StringNotEquals", variable = "aws:SourceVpce", values = local.endpoints }
-    ip   = { test = "NotIpAddress", variable = "aws:SourceIp", values = var.browser_cidrs }
+    ip   = { test = "NotIpAddress", variable = "aws:SourceIp", values = var.test_mode_cidrs }
   }
-  deny = local.outside[var.browser_access == "ip" ? "ip" : "vpce"]
+  deny = local.outside[var.test_mode_access == "ip" ? "ip" : "vpce"]
 }
 
 # --- the data bucket -----------------------------------------------------------
@@ -190,12 +189,12 @@ resource "aws_iam_role" "studio" {
 
   lifecycle {
     precondition {
-      condition     = var.browser_access != "vpce" || length(local.endpoints) > 0
-      error_message = "browser_access = vpce needs vpc_endpoint_id (your S3 endpoint), or choose ip (with browser_cidrs) or open."
+      condition     = var.test_mode_access != "off" || length(local.endpoints) > 0
+      error_message = "vpc_endpoint_id (or vpc_endpoint_ids) is required: your S3 VPC endpoint, the only way the studio's links to your data work."
     }
     precondition {
-      condition     = var.browser_access != "ip" || length(var.browser_cidrs) > 0
-      error_message = "browser_access = ip needs browser_cidrs: the public IP ranges your browsers reach S3 from."
+      condition     = var.test_mode_access != "ip" || length(var.test_mode_cidrs) > 0
+      error_message = "test_mode_access = ip needs test_mode_cidrs."
     }
     precondition {
       condition     = var.control_bucket == "" || var.control_bucket != var.bucket
@@ -251,9 +250,9 @@ resource "aws_iam_role_policy" "studio" {
 data "aws_iam_policy_document" "bucket" {
   source_policy_documents = var.bucket_policy_source_documents
 
-  # Not with browser_access = open: the studio's role may then read the data.
+  # Left out only with test_mode_access = open.
   dynamic "statement" {
-    for_each = var.browser_access != "open" ? [1] : []
+    for_each = var.test_mode_access != "open" ? [1] : []
     content {
       sid     = "StudioReadsOnlyFromYourNetwork"
       effect  = "Deny"

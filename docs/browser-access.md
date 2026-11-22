@@ -1,8 +1,8 @@
 # Browser access
 
-The studio's page shows your files: images, listings and outputs. To do that, the browser downloads them **directly from your data bucket**, using short-lived links that the studio signs. The studio never proxies your data. `browser_access` decides from where those links work.
+The studio's page shows your files: images, listings and outputs. To do that, the browser downloads them **directly from your data bucket**, using short-lived links that the studio signs. The studio never proxies your data. The links work only through your S3 VPC endpoint.
 
-## `vpce`: through your S3 VPC endpoints (default, recommended)
+## Through your S3 VPC endpoint
 
 Links work only for requests that arrive through one of the endpoints you list in `vpc_endpoint_id` / `vpc_endpoint_ids`.
 
@@ -13,26 +13,11 @@ Links work only for requests that arrive through one of the endpoints you list i
 
 If your browsers can't use private DNS, put the interface endpoint's own DNS name in the Add environment form's **browser endpoint** field (`terraform output browser_endpoint` in `examples/complete`). The studio then signs links for that host.
 
-## `ip`: from your public IP ranges
-
-Links work only from the addresses in `browser_cidrs`, for example your office's egress range or your corporate VPN's exit addresses. No VPC endpoint is needed.
-
-```hcl
-browser_access = "ip"
-browser_cidrs  = ["203.0.113.0/24", "198.51.100.7/32"]
-```
-
-Requests that arrive through a VPC endpoint have no source IP and are denied in this mode. If your workers also read data through a gateway endpoint, that's fine: the restriction applies only to the studio's role, not to your workers' role.
-
-The control bucket isn't affected by `browser_access`: the studio reads and writes its records there from its own servers.
-
-## `open`: anywhere
-
-The module adds no network restriction. Links work from anywhere, and the studio's role could also read your data itself (it still can't write it). Use this only for test data.
+The control bucket isn't affected: the studio reads and writes its records there from its own servers.
 
 ## CORS
 
-Whatever the mode, the bucket needs a CORS rule that allows `GET` from the studio's origin. The module sets it from `studio_origins` (default `["https://temperwork.com"]`).
+The data bucket needs a CORS rule that allows `GET` from the studio's origin. The module sets it from `studio_origins` (default `["https://temperwork.com"]`).
 
 ## Other ways in
 

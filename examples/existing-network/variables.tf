@@ -50,20 +50,8 @@ variable "prefix" {
   default     = "studio/"
 }
 
-variable "browser_access" {
-  description = "vpce, ip or open (see the README)."
-  type        = string
-  default     = "vpce"
-}
-
 variable "vpc_endpoint_ids" {
-  description = "With vpce: your S3 VPC endpoint ids."
-  type        = list(string)
-  default     = []
-}
-
-variable "browser_cidrs" {
-  description = "With ip: your browsers' public IP ranges."
+  description = "Your S3 VPC endpoint ids (an interface endpoint your VPN reaches, a gateway endpoint for in-VPC browsers, or both). Required."
   type        = list(string)
   default     = []
 }

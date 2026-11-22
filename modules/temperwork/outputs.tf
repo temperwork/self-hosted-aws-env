@@ -39,11 +39,6 @@ output "control_uri" {
   value       = local.control_uri
 }
 
-output "browser_access" {
-  description = "Where the studio's signed links to your data work."
-  value       = var.browser_access
-}
-
 output "studio_role_arn" {
   description = "The role the studio assumes in your account."
   value       = aws_iam_role.studio.arn

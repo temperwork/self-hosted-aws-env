@@ -1,9 +1,9 @@
 # The studio's access, offline: `terraform test` in modules/temperwork (no
 # AWS account: a mocked provider, nothing real is made). Checked for each
-# browser_access mode: the studio's role writes only the control bucket,
+# access mode: the studio's role writes only the control bucket,
 # never the data bucket; and it is denied reading the data outside your
-# network (vpce: not through your endpoints; ip: not from your ranges; open:
-# allowed). The mock doesn't render the JSON, so the statements are checked
+# network (not through your endpoints; with test_mode_access, not from the
+# test ranges, or allowed). The mock doesn't render the JSON, so the statements are checked
 # as the module writes them.
 
 mock_provider "aws" {
@@ -37,7 +37,6 @@ variables {
 run "vpce" {
   command = apply
   variables {
-    browser_access   = "vpce"
     vpc_endpoint_id  = "vpce-gateway"
     vpc_endpoint_ids = ["vpce-interface"]
   }
@@ -60,40 +59,39 @@ run "vpce" {
   }
 }
 
-run "ip" {
+run "test_mode_ip" {
   command = apply
   variables {
-    browser_access = "ip"
-    browser_cidrs  = ["203.0.113.0/24", "198.51.100.7/32"]
+    test_mode_access = "ip"
+    test_mode_cidrs  = ["203.0.113.0/24", "198.51.100.7/32"]
   }
   assert {
     condition = anytrue([
       for c in one([for st in data.aws_iam_policy_document.bucket.statement : st if st.sid == "StudioReadsOnlyFromYourNetwork"]).condition :
       c.test == "NotIpAddress" && c.variable == "aws:SourceIp" && toset(c.values) == toset(["203.0.113.0/24", "198.51.100.7/32"])
     ])
-    error_message = "ip: the studio's role is denied the data unless the request comes from your ranges"
+    error_message = "test_mode_access = ip: the studio's role is denied the data unless the request comes from your ranges"
   }
 }
 
-run "open" {
+run "test_mode_open" {
   command = apply
   variables {
-    browser_access = "open"
+    test_mode_access = "open"
   }
   assert {
     condition     = length([for st in data.aws_iam_policy_document.bucket.statement : st if st.sid == "StudioReadsOnlyFromYourNetwork"]) == 0
-    error_message = "open: no network restriction on reading"
+    error_message = "test_mode_access = open: no network restriction on reading"
   }
   assert {
     condition     = length([for st in data.aws_iam_policy_document.bucket.statement : st if st.sid == "StudioNeverWrites"]) == 1
-    error_message = "open: the studio still can't write the data"
+    error_message = "test_mode_access = open: the studio still can't write the data"
   }
 }
 
 run "studio_writes_only_the_control_bucket" {
   command = apply
   variables {
-    browser_access  = "vpce"
     vpc_endpoint_id = "vpce-gateway"
   }
   assert {
@@ -126,25 +124,24 @@ run "studio_writes_only_the_control_bucket" {
 run "control_bucket_must_differ" {
   command = plan
   variables {
-    browser_access  = "vpce"
     vpc_endpoint_id = "vpce-gateway"
     control_bucket  = "acme-data"
   }
   expect_failures = [aws_iam_role.studio]
 }
 
-run "vpce_needs_an_endpoint" {
+run "an_endpoint_is_required" {
   command = plan
   variables {
-    browser_access = "vpce"
+    vpc_endpoint_ids = []
   }
   expect_failures = [aws_iam_role.studio]
 }
 
-run "ip_needs_ranges" {
+run "test_mode_ip_needs_ranges" {
   command = plan
   variables {
-    browser_access = "ip"
+    test_mode_access = "ip"
   }
   expect_failures = [aws_iam_role.studio]
 }
@@ -152,7 +149,6 @@ run "ip_needs_ranges" {
 run "custom_origin" {
   command = apply
   variables {
-    browser_access  = "vpce"
     vpc_endpoint_id = "vpce-gateway"
     studio_origins  = ["https://studio.example.com"]
   }
@@ -165,7 +161,7 @@ run "custom_origin" {
 run "enroll_token_parameter" {
   command = apply
   variables {
-    browser_access         = "open"
+    test_mode_access       = "open"
     enroll_token_parameter = "/studio/enroll-token"
   }
   assert {
@@ -178,7 +174,7 @@ run "enroll_token_parameter" {
 run "no_enroll_token_parameter" {
   command = apply
   variables {
-    browser_access = "open"
+    test_mode_access = "open"
   }
   assert {
     condition     = length([for st in data.aws_iam_policy_document.worker.statement : st if st.sid == "EnrollToken"]) == 0

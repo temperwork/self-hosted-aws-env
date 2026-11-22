@@ -20,7 +20,7 @@ This repository is a Terraform module, [`modules/temperwork`](modules/temperwork
  │  IAM: <name>-studio-worker  ← your EC2 / ECS / EKS workers          │
  └─────────────────────────────────────────────────────────────────────┘
         ▲
-        └── your people's browsers open files through your VPC endpoint / IP ranges
+        └── your people's browsers open files through your S3 VPC endpoint
 ```
 
 ## Contents
@@ -28,7 +28,7 @@ This repository is a Terraform module, [`modules/temperwork`](modules/temperwork
 | Path | What it is |
 |---|---|
 | [`modules/temperwork`](modules/temperwork) | **The module.** Queues, data bucket (or your existing one), control bucket, studio role, bucket policies, worker role and instance profile, plus [`ec2-user-data.sh`](modules/temperwork/ec2-user-data.sh) for running workers on EC2. |
-| [`examples/existing-network`](examples/existing-network) | The module alone, for an account that already has a VPC endpoint or office/VPN IP ranges. It can also use a bucket you already have. |
+| [`examples/existing-network`](examples/existing-network) | The module alone, for an account that already has a VPC with an S3 endpoint. It can also use a bucket you already have. |
 | [`examples/complete`](examples/complete) | The module plus everything it needs in an empty account: a VPC, S3 endpoints and, optionally, an AWS Client VPN. |
 | [`docs/`](docs) | [How access works](docs/security-model.md), [browser access options](docs/browser-access.md), [running workers](docs/workers.md). |
 
@@ -46,7 +46,7 @@ This repository is a Terraform module, [`modules/temperwork`](modules/temperwork
 
 ### 1. Choose an example
 
-- **Already have a VPC endpoint, or want to allow your office's IP addresses?** Use `examples/existing-network`, or add the module to your own Terraform (see [Using the module](#using-the-module)).
+- **Already have a VPC with an S3 endpoint?** Use `examples/existing-network`, or add the module to your own Terraform (see [Using the module](#using-the-module)).
 - **No network for this yet?** Use `examples/complete`. It creates a VPC whose S3 endpoint is the only way to read your data.
 
 ### 2. Configure
@@ -68,7 +68,7 @@ external_id     = "..."                               # from the Add environment
 
 `terraform.tfvars` is git-ignored. Keep the external id out of version control.
 
-Before you go further, decide how people's browsers will reach your files. See [Browser access](#browser-access).
+Before you go further, check how people's browsers will reach your files. See [Browser access](#browser-access).
 
 ### 3. Apply
 
@@ -121,13 +121,7 @@ terraform output judge_worker_args
 
 ## Browser access
 
-When someone opens a file in the studio, their browser downloads it directly from your data bucket using a link the studio signed. `browser_access` decides where those links work.
-
-| `browser_access` | Links work… | You provide |
-|---|---|---|
-| `vpce` (default) | only through your S3 VPC endpoints: on your VPN, or inside your VPC | `vpc_endpoint_id` / `vpc_endpoint_ids` |
-| `ip` | only from your public IP ranges (an office, or your VPN's egress) | `browser_cidrs` |
-| `open` | anywhere. The studio's role can then read your data itself. **Not recommended.** | nothing |
+When someone opens a file in the studio, their browser downloads it directly from your data bucket using a link the studio signed. Those links work only through your **S3 VPC endpoint** (`vpc_endpoint_id` / `vpc_endpoint_ids`), so your people open files on your VPN or inside your VPC.
 
 The data bucket also needs a CORS rule for the studio's origin (`studio_origins`, default `https://temperwork.com`). The module adds it.
 
@@ -144,7 +138,7 @@ The data bucket also needs a CORS rule for the studio's origin (`studio_origins`
 | SQS FIFO queue | `<name>-judges.fifo` | Judge runs, for judge workers |
 | SQS FIFO queue | `<name>-model-<model>.fifo` | One per entry in `judge_models`: grading work for the model pods you host |
 | S3 bucket | `<name>-data` (or `bucket`) | Your datasets, and what your workers write: outputs (`<prefix>datasets/`) and LoRAs (`<prefix>loras/`) |
-| S3 bucket policy | on the data bucket | Denies the studio's role any write, and any read outside your network (except with `open`) |
+| S3 bucket policy | on the data bucket | Denies the studio's role any write, and any read that doesn't come through your VPC endpoint |
 | S3 CORS rule | on the data bucket | Lets the studio's page `GET` from the bucket |
 | S3 bucket | `<name>-control` (or `control_bucket`) | **Separate from your data.** The studio's records, shared with your workers (`.studio/`) |
 | S3 bucket policy | on the control bucket | TLS only |
@@ -165,8 +159,8 @@ In short:
 
 - The studio's role can **send** messages to your queues.
 - It can **read and write only the control bucket** (`<name>-control/.studio/`), a bucket separate from your data that holds run records, pipelines, worker heartbeats and dataset manifests.
-- It has `s3:GetObject` on the data bucket only so the read links it signs for your browsers work. It can't use that to download your data: the bucket policy denies it any request from outside your network ([why](docs/security-model.md#why-the-studio-has-s3getobject-on-your-data)). It can't write there at all.
-- The data bucket's policy **denies** the studio's role any read unless the request comes from your network. The studio can sign a link to a file but cannot fetch the file itself. Only a browser inside your network can.
+- It has `s3:GetObject` on the data bucket only so the read links it signs for your browsers work. It can't use that to download your data: the bucket policy denies it any request that doesn't come through your VPC endpoint ([why](docs/security-model.md#why-the-studio-has-s3getobject-on-your-data)). It can't write there at all.
+- The data bucket's policy **denies** the studio's role any read unless the request comes through your VPC endpoint. The studio can sign a link to a file but cannot fetch the file itself. Only a browser inside your network can.
 - The studio's role can be assumed only by temperwork's studio role, and only with your external id.
 - Your workers use their own role. They call temperwork.com only to hold a lease for their certificate. Your data stays in your account.
 - Judge workers' LLM steps call Claude through **Bedrock in your account**, so images never leave it.
@@ -185,7 +179,6 @@ module "temperwork" {
   studio_role_arn = var.studio_role_arn
   external_id     = var.external_id
 
-  browser_access  = "vpce"
   vpc_endpoint_id = aws_vpc_endpoint.s3.id
 }
 ```
@@ -204,9 +197,7 @@ The module has no `provider` block. It uses your `aws` provider and its region. 
 | `bucket_policy_source_documents` | `[]` | With an existing bucket: its current policy JSON, so its statements are kept. The module writes the bucket's whole policy. |
 | `prefix` | `"studio/"` | Where in the data bucket workers write outputs and LoRAs. |
 | `studio_origins` | `["https://temperwork.com"]` | Origins allowed by the data bucket's CORS rule. |
-| `browser_access` | `"vpce"` | `vpce`, `ip` or `open`. |
-| `vpc_endpoint_id`, `vpc_endpoint_ids` | `""`, `[]` | S3 VPC endpoints, for `vpce`. |
-| `browser_cidrs` | `[]` | Public IP ranges, for `ip`. |
+| `vpc_endpoint_id`, `vpc_endpoint_ids` | (one required) | Your S3 VPC endpoints: the only way the studio's links to your data work. |
 | `worker_principals` | EC2, ECS tasks | Services that can assume the worker role. Add `pods.eks.amazonaws.com` for EKS. |
 | `worker_assumers` | `[]` | IAM principals that can assume the worker role (workers outside AWS). |
 | `judge_models` | `[]` | Self-hosted judge models. Each gets a queue. |
@@ -215,7 +206,7 @@ The module has no `provider` block. It uses your `aws` provider and its region. 
 
 ### Outputs
 
-`environment`, `worker_env`, `bucket`, `control_bucket`, `control_uri`, `browser_access`, `studio_role_arn`, `worker_role_arn`, `worker_role_name`, `worker_instance_profile`, `ec2_user_data_path`, `judge_worker_args`, `judge_worker_env`, `judge_model_env`. Each output's description is in [`outputs.tf`](modules/temperwork/outputs.tf).
+`environment`, `worker_env`, `bucket`, `control_bucket`, `control_uri`, `studio_role_arn`, `worker_role_arn`, `worker_role_name`, `worker_instance_profile`, `ec2_user_data_path`, `judge_worker_args`, `judge_worker_env`, `judge_model_env`. Each output's description is in [`outputs.tf`](modules/temperwork/outputs.tf).
 
 ## Updating and removing
 

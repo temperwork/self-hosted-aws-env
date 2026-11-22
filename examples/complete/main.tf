@@ -32,10 +32,9 @@ module "temperwork" {
   external_id     = var.external_id
   studio_origins  = var.studio_origins
 
-  # Your data is readable by the studio's links only through this VPC's S3
+  # The studio's links to your data work only through this VPC's S3
   # endpoints: from instances in the VPC and, with vpn = true, from
   # browsers on the VPN.
-  browser_access = "vpce"
   vpc_endpoint_ids = compact([
     aws_vpc_endpoint.s3_gateway.id,
     var.vpn ? aws_vpc_endpoint.s3_interface[0].id : "",

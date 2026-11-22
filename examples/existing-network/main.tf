@@ -1,6 +1,5 @@
-# A temperwork environment in an account that already has its network: you
-# bring your own S3 VPC endpoint (browser_access = vpce) or your browsers'
-# public IP ranges (browser_access = ip), and optionally your own bucket.
+# The temperwork module in an account that already has its network: you
+# bring your own S3 VPC endpoint, and optionally your own data bucket.
 
 terraform {
   required_version = ">= 1.5"
@@ -36,9 +35,7 @@ module "temperwork" {
   bucket_policy_source_documents = var.existing_bucket_policy_file != "" ? [file(var.existing_bucket_policy_file)] : []
   prefix                         = var.prefix
 
-  browser_access   = var.browser_access
   vpc_endpoint_ids = var.vpc_endpoint_ids
-  browser_cidrs    = var.browser_cidrs
 
   worker_principals      = var.worker_principals
   worker_assumers        = var.worker_assumers

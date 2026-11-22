@@ -7,13 +7,9 @@ region = "us-west-2"
 studio_role_arn = "arn:aws:iam::<temperwork account>:role/<studio role>"
 external_id     = "<the random external id the form suggests>"
 
-# Either: browsers reach S3 through your VPC endpoint(s) (on your VPN or in the VPC)
-browser_access   = "vpce"
+# Your S3 VPC endpoint(s): the only way the studio's links to your data work,
+# so your people open files on your VPN or inside the VPC.
 vpc_endpoint_ids = ["vpce-0123456789abcdef0"]
-
-# Or: browsers reach S3 from your office / VPN egress addresses
-# browser_access = "ip"
-# browser_cidrs  = ["203.0.113.0/24"]
 
 # Use a bucket you already have. Its bucket policy is replaced, so pass the
 # current one to keep its statements:

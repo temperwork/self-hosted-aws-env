@@ -60,35 +60,14 @@ variable "studio_origins" {
   default     = ["https://temperwork.com"]
 }
 
-variable "browser_access" {
-  description = <<-EOT
-    Where the links the studio signs for your data work (they act as the studio's role):
-      vpce: only through your S3 VPC endpoints (vpc_endpoint_id, vpc_endpoint_ids): on your VPN or in your VPC
-      ip:   only from your public IP ranges (browser_cidrs): your office or VPN egress; no VPN needed
-      open: from anywhere, and the studio's role can then read your data itself (not recommended)
-  EOT
-  type        = string
-  default     = "vpce"
-  validation {
-    condition     = contains(["vpce", "ip", "open"], var.browser_access)
-    error_message = "browser_access: vpce, ip or open."
-  }
-}
-
 variable "vpc_endpoint_id" {
-  description = "With browser_access = vpce: your S3 VPC endpoint (an interface endpoint for browsers on a VPN, or a gateway endpoint for browsers inside the VPC)."
+  description = "Your S3 VPC endpoint: the only way the studio's links to your data work (an interface endpoint for browsers on a VPN, or a gateway endpoint for browsers inside the VPC). Required (this or vpc_endpoint_ids)."
   type        = string
   default     = ""
 }
 
 variable "vpc_endpoint_ids" {
   description = "More S3 VPC endpoints, beside vpc_endpoint_id (e.g. a gateway and an interface endpoint in the same VPC)."
-  type        = list(string)
-  default     = []
-}
-
-variable "browser_cidrs" {
-  description = "With browser_access = ip: the public IP ranges your browsers reach S3 from (e.g. [\"203.0.113.0/24\"])."
   type        = list(string)
   default     = []
 }
@@ -125,4 +104,25 @@ variable "allow_bedrock_model_subscription" {
   description = "Let the workers' role subscribe the account to Anthropic models on AWS Marketplace, which Bedrock does on a model's first call. Turn off if you enable the models yourselves."
   type        = bool
   default     = true
+}
+
+variable "test_mode_access" {
+  description = <<-EOT
+    For testing temperwork itself only; leave it off. Loosens where the studio's role may read the data bucket from:
+      off:  only through your S3 VPC endpoints (vpc_endpoint_id, vpc_endpoint_ids)
+      ip:   only from test_mode_cidrs, with no VPC endpoint needed
+      open: from anywhere, so the studio's role can read the data itself
+  EOT
+  type        = string
+  default     = "off"
+  validation {
+    condition     = contains(["off", "ip", "open"], var.test_mode_access)
+    error_message = "test_mode_access: off, ip or open."
+  }
+}
+
+variable "test_mode_cidrs" {
+  description = "For testing only, with test_mode_access = ip: the public IP ranges the studio's links work from."
+  type        = list(string)
+  default     = []
 }

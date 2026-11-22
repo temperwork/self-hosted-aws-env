@@ -171,3 +171,20 @@ run "no_enroll_token_parameter" {
     error_message = "without enroll_token_parameter the workers get no SSM access"
   }
 }
+
+run "studio_sees_but_cannot_feed_judge_model_queues" {
+  command = apply
+  variables {
+    vpc_endpoint_id = "vpce-gateway"
+    judge_models    = ["qwen3-vl-8b"]
+  }
+  assert {
+    condition     = one([for st in data.aws_iam_policy_document.studio.statement : st.actions if st.sid == "SeeJudgeModelQueues"]) == toset(["sqs:GetQueueAttributes"])
+    error_message = "the studio may read the judge model queues' attributes, and nothing else on them"
+  }
+  assert {
+    condition = alltrue([for st in data.aws_iam_policy_document.studio.statement :
+    !contains(st.actions, "sqs:SendMessage") || st.sid == "Queues"])
+    error_message = "the studio sends only to the runs, trainings and judges queues"
+  }
+}

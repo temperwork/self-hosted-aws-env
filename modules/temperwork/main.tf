@@ -159,6 +159,16 @@ data "aws_iam_policy_document" "studio" {
     actions   = ["sqs:SendMessage", "sqs:GetQueueAttributes", "sqs:PurgeQueue"]
     resources = [aws_sqs_queue.runs.arn, aws_sqs_queue.trainings.arn, aws_sqs_queue.judges.arn]
   }
+  # The judge models' queues: only your judge workers send to them, but the
+  # studio shows how much work waits there.
+  dynamic "statement" {
+    for_each = length(var.judge_models) > 0 ? [1] : []
+    content {
+      sid       = "SeeJudgeModelQueues"
+      actions   = ["sqs:GetQueueAttributes"]
+      resources = [for q in aws_sqs_queue.models : q.arn]
+    }
+  }
   statement {
     sid       = "ControlRecords"
     actions   = ["s3:GetObject", "s3:PutObject"]

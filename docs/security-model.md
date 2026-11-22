@@ -29,6 +29,7 @@ The control bucket is the only S3 location the studio can write. The module won'
 | Permission | On | Why |
 |---|---|---|
 | `sqs:SendMessage`, `sqs:GetQueueAttributes`, `sqs:PurgeQueue` | `arn:aws:sqs:<region>:<account>:<name>-runs.fifo`<br>`arn:aws:sqs:<region>:<account>:<name>-trainings.fifo`<br>`arn:aws:sqs:<region>:<account>:<name>-judges.fifo` | Queue work, show queue depth, and clear a queue from the studio |
+| `sqs:GetQueueAttributes` | `arn:aws:sqs:<region>:<account>:<name>-model-qwen3-vl-8b.fifo`, ... (one per `judge_models` entry) | Show how much grading work waits for your judge model pods. Only your judge workers send to these queues |
 | `s3:GetObject`, `s3:PutObject` | `arn:aws:s3:::<name>-control/.studio/*`<br>(for example `.studio/executions/<id>.json`, `.studio/workers/<id>.json`, ...) | Write run records and read results |
 | `s3:ListBucket` | `arn:aws:s3:::<name>-control`, only with `s3:prefix` = `.studio/*` | List the records |
 | `s3:GetObject` | `arn:aws:s3:::<name>-data/*`<br>(for example `arn:aws:s3:::<name>-data/faces/0001.jpg`, `arn:aws:s3:::<name>-data/<prefix>datasets/<output>/...`, ...) | So the file links it signs for your browsers work. **Temperwork can't use it to download your data**: see [Why the studio has `s3:GetObject` on your data](#why-the-studio-has-s3getobject-on-your-data) |
@@ -36,21 +37,21 @@ The control bucket is the only S3 location the studio can write. The module won'
 
 It **cannot**:
 
-- receive or delete queue messages
-- send to the judge models' queues (`arn:aws:sqs:<region>:<account>:<name>-model-*.fifo`)
-- download or list your data from its own servers, or from anywhere else outside your VPC ([`StudioReadsOnlyFromYourNetwork`](../modules/temperwork/main.tf#L202-L216))
+- receive or delete queue messages. It doesn't need to: to cancel a queued run, the studio marks the run stopped in the control bucket, and the worker that receives its message drops it. A running judge run is stopped with a `stop` message on its queue
+- send to the judge models' queues (`arn:aws:sqs:<region>:<account>:<name>-model-*.fifo`). Only your judge workers do
+- download or list your data from its own servers, or from anywhere else outside your VPC ([`StudioReadsOnlyFromYourNetwork`](../modules/temperwork/main.tf#L212-L226))
 - write, delete or change anything in the data bucket: its IAM policy grants no write there, and S3 denies anything not granted
 - touch anything else in your account
 
-The role's whole IAM policy is the [`studio` policy document](../modules/temperwork/main.tf#L156-L189).
+The role's whole IAM policy is the [`studio` policy document](../modules/temperwork/main.tf#L156-L199).
 
 ## Why the studio has `s3:GetObject` on your data
 
 The studio's page shows your images and folder listings, but your data never passes through temperwork. The studio gives your people's browsers **presigned URLs**, and each browser downloads the file directly from your bucket.
 
 - **Signing a URL doesn't touch S3.** A presigned URL is the request, signed locally with the studio role's credentials. Making one sends nothing to S3, so the studio doesn't download anything when it signs.
-- **The URL is checked when it's used, as the role that signed it.** When a browser opens the link, S3 checks the request as the studio's role. So the role needs `s3:GetObject` ([`SignDataLinks`](../modules/temperwork/main.tf#L177-L183)), or the link would be refused.
-- **The bucket policy decides where the studio's role can read from at all, not just where links work.** S3 checks the data bucket's policy on every request made as the studio's role, against the network the request comes from. [`StudioReadsOnlyFromYourNetwork`](../modules/temperwork/main.tf#L202-L216) denies the role `s3:GetObject` and `s3:ListBucket` unless the request arrives through one of your S3 VPC endpoints (`vpc_endpoint_ids`). That covers a presigned link, and it equally covers temperwork's servers calling `GetObject` directly with the role's credentials: those calls can't come through your VPC endpoint, so they are denied even though the role has `s3:GetObject`. The test for "outside your network" is the [`outside` local](../modules/temperwork/main.tf#L37-L45).
+- **The URL is checked when it's used, as the role that signed it.** When a browser opens the link, S3 checks the request as the studio's role. So the role needs `s3:GetObject` ([`SignDataLinks`](../modules/temperwork/main.tf#L187-L193)), or the link would be refused.
+- **The bucket policy decides where the studio's role can read from at all, not just where links work.** S3 checks the data bucket's policy on every request made as the studio's role, against the network the request comes from. [`StudioReadsOnlyFromYourNetwork`](../modules/temperwork/main.tf#L212-L226) denies the role `s3:GetObject` and `s3:ListBucket` unless the request arrives through one of your S3 VPC endpoints (`vpc_endpoint_ids`). That covers a presigned link, and it equally covers temperwork's servers calling `GetObject` directly with the role's credentials: those calls can't come through your VPC endpoint, so they are denied even though the role has `s3:GetObject`. The test for "outside your network" is the [`outside` local](../modules/temperwork/main.tf#L37-L45).
 
 So:
 
@@ -64,11 +65,11 @@ The studio's role can only do what its IAM policy, in your account, allows, and 
 
 ## The data bucket's policy
 
-The [data bucket's policy](../modules/temperwork/main.tf#L199-L225) has one **Deny** statement for the studio's role on `arn:aws:s3:::<name>-data` and `arn:aws:s3:::<name>-data/*`:
+The [data bucket's policy](../modules/temperwork/main.tf#L209-L235) has one **Deny** statement for the studio's role on `arn:aws:s3:::<name>-data` and `arn:aws:s3:::<name>-data/*`:
 
 | Statement | Denies | When |
 |---|---|---|
-| [`StudioReadsOnlyFromYourNetwork`](../modules/temperwork/main.tf#L202-L216) | `s3:GetObject`, `s3:ListBucket` | The request doesn't come through one of your S3 VPC endpoints |
+| [`StudioReadsOnlyFromYourNetwork`](../modules/temperwork/main.tf#L212-L226) | `s3:GetObject`, `s3:ListBucket` | The request doesn't come through one of your S3 VPC endpoints |
 
 Only traffic inside your VPC, or on a VPN into it, can come through your endpoint. A request from the internet, including from temperwork's servers, carries no `aws:SourceVpce` (or a different one), so it is denied.
 

@@ -98,6 +98,8 @@ Your workers are the data plane's compute. This is the role they run with.
 | `bedrock-mantle:CreateInference` | `*` (the Bedrock Messages API takes no resource) | LLM judge steps through the Messages API |
 | `ssm:GetParameter` | `arn:aws:ssm:<region>:<account>:parameter/temperwork/enroll-token` (the value of `enroll_token_parameter`, only if set) | Read the enrollment token at boot |
 
+With `ec2_workers` and an image in ECR, the role also gets `AmazonEC2ContainerRegistryReadOnly`, to pull it. The EC2 workers' instances use IMDSv2 only, and their security group (unless you give your own) allows no inbound traffic.
+
 Workers **can't enable** Bedrock models: they have no AWS Marketplace access. An admin enables the Anthropic models in your account first (see the README's prerequisites). Until then, a judge's LLM steps fail with an error saying the model isn't enabled.
 
 ## What crosses between the planes

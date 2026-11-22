@@ -78,3 +78,18 @@ output "vpn_client_config" {
     "",
   ]) : ""
 }
+
+output "worker_policy_json" {
+  description = "The workers' IAM policy, for workers you run another way."
+  value       = module.temperwork.worker_policy_json
+}
+
+output "queues" {
+  description = "Every queue's URL and ARN."
+  value       = module.temperwork.queues
+}
+
+output "ec2_autoscaling_group" {
+  description = "With ec2_workers: the Auto Scaling group running them."
+  value       = module.temperwork.ec2_autoscaling_group
+}

@@ -28,22 +28,24 @@
 # enrollment serves its restarts.
 set -euxo pipefail
 
-# --- your settings: the module's outputs (worker_env, judge_worker_args) ---
-IMAGE='<registry>/qwen-image:customer-prod-latest'   # the worker image temperwork gives you access to
-REGISTRY_LOGIN='none'          # ecr: log in to IMAGE's ECR registry with the profile; none: a public registry
-STUDIO_URL='https://temperwork.com'
-STUDIO_CONNECTION_ID='<the id you gave the environment>'
-STUDIO_CONTROL_URI='<worker_env STUDIO_CONTROL_URI>'   # in the control bucket
-STUDIO_LORA_URI='<worker_env STUDIO_LORA_URI>'         # in the data bucket
-AWS_REGION='us-west-2'
-QUEUE_URL='<worker_env STUDIO_QUEUE_URL>'   # the pod service's runs queue ('' : none)
-TRAIN_QUEUE_URL=''             # a trainer image's: worker_env STUDIO_TRAIN_QUEUE_URL
-JUDGE_QUEUE_URL=''             # also run a judge worker here: judge_worker_args' --queue-url
-JUDGE_IMAGE=''                 # the judge worker image (<registry>/judge-worker:customer-prod-latest); empty: IMAGE's worker, without automation judges
-TOKEN_PARAM='/temperwork/enroll-token'   # the SSM parameter (SecureString) holding the enrollment token
-ROOT_SHA256=''                 # only for an image not pinned to temperwork.com's root (the customer images are): that root's fingerprint
-IDLE_S=600                     # a worker leaves after its queue has been empty this long
-MAX_MINUTES=0                  # power off after this long whatever happens (0: never)
+# --- your settings: the module's outputs (worker_env, judge_worker_args). Each
+# can also come from the environment (set, even to empty, it wins): the module's
+# ec2_workers sets them that way ---
+IMAGE="${IMAGE-<registry>/qwen-image:customer-prod-latest}"   # the worker image temperwork gives you access to
+REGISTRY_LOGIN="${REGISTRY_LOGIN-none}"          # ecr: log in to IMAGE's ECR registry with the profile; none: a public registry
+STUDIO_URL="${STUDIO_URL-https://temperwork.com}"
+STUDIO_CONNECTION_ID="${STUDIO_CONNECTION_ID-<the id you gave the environment>}"
+STUDIO_CONTROL_URI="${STUDIO_CONTROL_URI-<worker_env STUDIO_CONTROL_URI>}"   # in the control bucket
+STUDIO_LORA_URI="${STUDIO_LORA_URI-<worker_env STUDIO_LORA_URI>}"         # in the data bucket
+AWS_REGION="${AWS_REGION-us-west-2}"
+QUEUE_URL="${QUEUE_URL-<worker_env STUDIO_QUEUE_URL>}"   # the pod service's runs queue ('' : none)
+TRAIN_QUEUE_URL="${TRAIN_QUEUE_URL-}"             # a trainer image's: worker_env STUDIO_TRAIN_QUEUE_URL
+JUDGE_QUEUE_URL="${JUDGE_QUEUE_URL-}"             # also run a judge worker here: judge_worker_args' --queue-url
+JUDGE_IMAGE="${JUDGE_IMAGE-}"                 # the judge worker image (<registry>/judge-worker:customer-prod-latest); empty: IMAGE's worker, without automation judges
+TOKEN_PARAM="${TOKEN_PARAM-/temperwork/enroll-token}"   # the SSM parameter (SecureString) holding the enrollment token
+ROOT_SHA256="${ROOT_SHA256-}"                 # only for an image not pinned to temperwork.com's root (the customer images are): that root's fingerprint
+IDLE_S="${IDLE_S-600}"                     # a worker leaves after its queue has been empty this long (0: never; always-on workers)
+MAX_MINUTES="${MAX_MINUTES-0}"                  # power off after this long whatever happens (0: never)
 # --- end of settings ---
 
 [ "$MAX_MINUTES" -gt 0 ] && shutdown -h "+$MAX_MINUTES"
@@ -91,6 +93,12 @@ ITYPE=$(curl -sf -H "X-aws-ec2-metadata-token: $TOKEN" http://169.254.169.254/la
 common=(-d --stop-timeout 100 -e STUDIO_ENROLL_TOKEN -e STUDIO_URL
         -e STUDIO_CONNECTION_ID -e STUDIO_CONTROL_URI -e STUDIO_LORA_URI -e AWS_REGION)
 [ -n "$ROOT_SHA256" ] && common+=(-e STUDIO_ROOT_SHA256="$ROOT_SHA256")
+# IDLE_S=0: the workers stay, waiting for work (an Auto Scaling group keeps them).
+if [ "$IDLE_S" -gt 0 ]; then
+  idle_pod=(-e STUDIO_POD_IDLE_S="$IDLE_S"); idle_judge=(-e STUDIO_JUDGE_IDLE_S="$IDLE_S")
+else
+  idle_pod=(-e STUDIO_POD_STAY=1); idle_judge=()
+fi
 names=()
 pod() {   # name, docker args for its device...
   local name=$1; shift
@@ -98,7 +106,7 @@ pod() {   # name, docker args for its device...
   # --ipc=host: a training's data loader outgrows docker's 64 MB /dev/shm.
   docker run "${common[@]}" --restart on-failure --name "$name" --hostname "$name" "$@" --ipc=host \
     -v "$WS:/workspace" -e STUDIO_QUEUE_URL="$QUEUE_URL" -e STUDIO_TRAIN_QUEUE_URL="$TRAIN_QUEUE_URL" \
-    -e STUDIO_POD_IDLE_S="$IDLE_S" -e STUDIO_POD_DRAIN_S=90 -e STUDIO_POD_INSTANCE_TYPE="$ITYPE" \
+    "${idle_pod[@]}" -e STUDIO_POD_DRAIN_S=90 -e STUDIO_POD_INSTANCE_TYPE="$ITYPE" \
     -e STUDIO_POD_PLATFORM=ec2 "$IMAGE"
   names+=("$name")
 }
@@ -118,7 +126,7 @@ if [ -n "$JUDGE_QUEUE_URL" ]; then
   mkdir -p "$WS/judge"
   docker rm -f judge 2>/dev/null || true
   judge=(-v "$WS/judge:/state" -e STUDIO_JUDGE_STATE=/state -e STUDIO_JUDGE_QUEUE_URL="$JUDGE_QUEUE_URL"
-         -e STUDIO_JUDGE_IDLE_S="$IDLE_S")
+         "${idle_judge[@]}")
   if [ -n "$JUDGE_IMAGE" ]; then
     chown 65532:65532 "$WS/judge"
     docker run "${common[@]}" --name judge --hostname judge "${judge[@]}" "$JUDGE_IMAGE"

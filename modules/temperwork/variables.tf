@@ -79,7 +79,7 @@ variable "judge_models" {
 }
 
 variable "enroll_token_parameter" {
-  description = "Optional: the name of an SSM parameter (e.g. /temperwork/enroll-token) holding the workers' enrollment token. The workers' role may then read it, as ec2-user-data.sh does."
+  description = "The name of an SSM parameter (e.g. /temperwork/enroll-token) holding the workers' enrollment token. The workers' role may then read it, as ec2-user-data.sh does. Required when ec2_workers > 0."
   type        = string
   default     = ""
   validation {
@@ -107,4 +107,80 @@ variable "test_mode_cidrs" {
   description = "For testing only, with test_mode_access = ip: the public IP ranges temperwork's links work from."
   type        = list(string)
   default     = []
+}
+
+# --- EC2 workers (ec2_workers.tf) ------------------------------------------------
+
+variable "ec2_workers" {
+  description = "How many always-on EC2 GPU instances run workers (an Auto Scaling group). 0: none, run workers your own way with the worker_* outputs."
+  type        = number
+  default     = 0
+  validation {
+    condition     = var.ec2_workers >= 0 && floor(var.ec2_workers) == var.ec2_workers
+    error_message = "ec2_workers: a whole number, 0 or more."
+  }
+}
+
+variable "environment_id" {
+  description = "The id you gave the environment in temperwork (STUDIO_CONNECTION_ID). Empty: name."
+  type        = string
+  default     = ""
+}
+
+variable "temperwork_url" {
+  description = "temperwork's address, which workers call for their lease (STUDIO_URL)."
+  type        = string
+  default     = "https://temperwork.com"
+}
+
+variable "worker_image" {
+  description = "With ec2_workers: the worker image the pods run (a customer-prod-latest tag). Required when ec2_workers > 0."
+  type        = string
+  default     = ""
+}
+
+variable "worker_queue" {
+  description = "With ec2_workers: which queue the pods take work from: runs (inference images) or trainings (trainer images)."
+  type        = string
+  default     = "runs"
+  validation {
+    condition     = contains(["runs", "trainings"], var.worker_queue)
+    error_message = "worker_queue: runs or trainings."
+  }
+}
+
+variable "judge_worker_image" {
+  description = "With ec2_workers: also run a judge worker on each instance, from this image, on the judges queue. Empty: none."
+  type        = string
+  default     = ""
+}
+
+variable "ec2_instance_type" {
+  description = "With ec2_workers: the GPU instance type. Each GPU runs one pod."
+  type        = string
+  default     = "g6e.xlarge"
+}
+
+variable "ec2_subnet_ids" {
+  description = "With ec2_workers: the subnets the instances go in. They must reach temperwork.com, the image registry, Hugging Face and S3."
+  type        = list(string)
+  default     = []
+}
+
+variable "ec2_security_group_ids" {
+  description = "With ec2_workers: security groups for the instances. Empty: one that allows no inbound traffic and all outbound."
+  type        = list(string)
+  default     = []
+}
+
+variable "ec2_ami_id" {
+  description = "With ec2_workers: the AMI (Docker and the NVIDIA container toolkit). Empty: the latest AWS Deep Learning Base GPU AMI (Amazon Linux 2023)."
+  type        = string
+  default     = ""
+}
+
+variable "ec2_volume_size" {
+  description = "With ec2_workers: the root volume, in GB (models take 40 to 70 GB unless the instance has local NVMe)."
+  type        = number
+  default     = 200
 }

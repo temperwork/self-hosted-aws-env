@@ -6,47 +6,55 @@ Workers are temperwork's compiled worker, `temperwork-worker`, packaged in conta
 
 The worker images are on [GitHub Container Registry](https://github.com/tonymeng?tab=packages&repo_name=gallery). Use their `customer-prod-latest` tags: those images trust only temperwork.com's certificate root.
 
-## Settings
+## Three ways to run them
 
-Each worker needs these environment variables:
+| | What runs | When to use |
+|---|---|---|
+| [**`ec2_workers`**](#ec2-workers-from-the-module) | The module keeps that many always-on GPU instances (an Auto Scaling group) | The simplest setup: set a number and apply |
+| [**Your own EC2 instances**](#your-own-ec2-instances) | Instances you launch with the module's user data script; each powers off when its queue is empty | You want to pay only while there's work, or scale your own way |
+| [**Anything else**](#running-workers-another-way) | The images on ECS, Kubernetes, GPUs outside AWS... | You already run containers somewhere. Leave `ec2_workers` at 0 and use the module's outputs |
 
-```bash
-terraform output worker_env
-```
+All three need the enrollment token in SSM first.
 
-| Variable | Value |
-|---|---|
-| `STUDIO_CONNECTION_ID` | The id you gave the environment in temperwork |
-| `STUDIO_CONTROL_URI` | `worker_env.STUDIO_CONTROL_URI`: the control bucket's `.studio/` |
-| `STUDIO_LORA_URI` | `worker_env.STUDIO_LORA_URI`: the data bucket's `<prefix>loras/`, where trainings put LoRAs |
-| `STUDIO_QUEUE_URL` | `worker_env.STUDIO_QUEUE_URL` (runs) |
-| `STUDIO_TRAIN_QUEUE_URL` | `worker_env.STUDIO_TRAIN_QUEUE_URL` (trainer pods) |
-| `AWS_REGION` | `worker_env.AWS_REGION` |
-| `STUDIO_URL` | `https://temperwork.com` |
-| `STUDIO_ENROLL_TOKEN` | The token from the environment's card: **⋯ → Make an enrollment token**. Used only on first start |
+## The enrollment token
 
-A judge worker takes `STUDIO_JUDGE_QUEUE_URL` (or the flags in `terraform output judge_worker_args`). If you host judge models, it also takes `STUDIO_QUEUES` from `terraform output judge_worker_env`.
-
-Workers on EC2 need **no access keys**: the SDK picks up the role from the instance profile.
-
-A pod serves one base model. Give a runs queue only pods of one model. A worker leaves when its queue has been empty for a while (`STUDIO_POD_IDLE_S`, `STUDIO_JUDGE_IDLE_S`), or when its certificate is revoked.
-
-### Keeping the enrollment token secret
-
-Store the token in a secret store, not in the user data. The EC2 script reads it from SSM Parameter Store:
+On the environment's card in temperwork, choose **⋯ → Make an enrollment token**. A worker uses it once, on its first start, to get its certificate. Store it in SSM Parameter Store, not in user data:
 
 ```bash
 aws ssm put-parameter --name /temperwork/enroll-token --type SecureString --value '<token>'
 ```
 
-Set `enroll_token_parameter = "/temperwork/enroll-token"` in Terraform so the worker role can read it.
+Then set `enroll_token_parameter = "/temperwork/enroll-token"`, so the workers' role can read it.
 
-## EC2
+## EC2 workers from the module
 
-[`modules/temperwork/ec2-user-data.sh`](../modules/temperwork/ec2-user-data.sh) (also `terraform output ec2_user_data_path`) is the whole setup. It runs one pod container per GPU and, optionally, a judge worker beside them. It shuts the instance down when every worker has left.
+```hcl
+ec2_workers            = 1
+worker_image           = "<registry>/qwen-image:customer-prod-latest"
+enroll_token_parameter = "/temperwork/enroll-token"
+ec2_subnet_ids         = ["subnet-..."]   # examples/complete fills this in
+```
 
-1. Fill in the settings block at the top of the script from `terraform output`.
-2. Launch a GPU instance on the **AWS Deep Learning Base GPU AMI (Amazon Linux 2023)**:
+Each instance runs one pod per GPU, taking work from `worker_queue` (`runs`, or `trainings` for a trainer image). With `judge_worker_image`, it also runs a judge worker on the judges queue. The workers stay up waiting for work, so **you pay for the instances while they run**, whether or not there's work. Set `ec2_workers = 0` to stop them.
+
+| Input | Default | |
+|---|---|---|
+| `ec2_workers` | `0` | How many instances |
+| `worker_image` | (required) | The pods' image |
+| `worker_queue` | `runs` | `runs` or `trainings` |
+| `judge_worker_image` | `""` | Also run a judge worker |
+| `ec2_instance_type` | `g6e.xlarge` | One pod per GPU |
+| `ec2_subnet_ids` | (required) | Must reach temperwork.com, the image registry, Hugging Face and S3 |
+| `ec2_security_group_ids` | `[]` | Empty: one with no inbound and all outbound |
+| `ec2_ami_id` | latest Deep Learning Base GPU AMI (Amazon Linux 2023) | Needs Docker and the NVIDIA container toolkit |
+| `ec2_volume_size` | `200` | GB. Models take 40 to 70 GB unless the instance has local NVMe |
+| `environment_id` | `name` | The id you gave the environment in temperwork |
+
+An image in ECR gets pull access automatically. Changing these settings updates the launch template; running instances keep the old one until they're replaced.
+
+## Your own EC2 instances
+
+[`modules/temperwork/ec2-user-data.sh`](../modules/temperwork/ec2-user-data.sh) (`terraform output ec2_user_data_path`) is the same script the module uses. Fill in the settings block at its top from `terraform output`, then launch a GPU instance on the **AWS Deep Learning Base GPU AMI (Amazon Linux 2023)**:
 
 ```bash
 aws ec2 run-instances \
@@ -60,36 +68,31 @@ aws ec2 run-instances \
 ```
 
 - `HttpPutResponseHopLimit=2` lets the containers reach the instance profile's credentials.
-- `terminate` means the instance is gone once its workers leave, so you pay only while there is work.
-- The models are about 40–70 GB. The script uses the instance's local NVMe disk if it has one. Otherwise, give the root volume enough space.
+- Each worker leaves once its queue has been empty for `IDLE_S` (default 600 s), and then the instance powers off. With `terminate`, it's gone, so you pay only while there's work.
+- Start instances when work waits, based on queue depth (`ApproximateNumberOfMessagesVisible`): by hand, or with your own scaling. temperwork doesn't start workers in your account.
 
-To run several instances against the same queue, put the same user data in a launch template and use an Auto Scaling group.
-
-If you keep the images in your own ECR, set `REGISTRY_LOGIN='ecr'` in the script and give the worker role pull access:
-
-```hcl
-resource "aws_iam_role_policy_attachment" "ecr" {
-  role       = module.temperwork.worker_role_name
-  policy_arn = "arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryReadOnly"
-}
-```
+For an image in your own ECR, set `REGISTRY_LOGIN='ecr'` in the script and attach `AmazonEC2ContainerRegistryReadOnly` to `terraform output worker_role_name`.
 
 ## Running workers another way
 
-This repository sets up workers on **EC2**. The worker images aren't tied to it: you can run them however you like, for example on ECS, Kubernetes or GPUs outside AWS.
+The images aren't tied to EC2. Leave `ec2_workers` at 0 and run them however you like. Whatever runs them, a worker only needs to reach:
 
-Whatever runs them, a worker only needs to reach the same things:
-
-- **The queues**: it takes work from them (`STUDIO_QUEUE_URL`, `STUDIO_TRAIN_QUEUE_URL`, `STUDIO_JUDGE_QUEUE_URL`).
-- **The control bucket**: it reads the run records the control plane wrote and updates them (`STUDIO_CONTROL_URI`).
+- **The queues**: it takes work from them.
+- **The control bucket**: it reads the run records the control plane wrote and updates them.
 - **The data bucket**: it reads inputs and writes outputs.
 - **temperwork.com**: it enrolls, then holds a lease for its certificate.
 
-The control plane only ever talks to the queues and the control bucket, so it doesn't matter to temperwork where your workers run. The `<name>-tw-worker` role trusts only EC2, so elsewhere give your workers credentials of your own with the same permissions, and the settings above.
+The control plane only ever talks to the queues and the control bucket, so it doesn't matter to temperwork where your workers run. The module's outputs have everything a worker needs:
 
-## Scaling
+| Output | |
+|---|---|
+| `worker_env` | Every worker's environment variables (add `STUDIO_ENROLL_TOKEN`). A pod takes `STUDIO_QUEUE_URL` or `STUDIO_TRAIN_QUEUE_URL`; a judge worker takes `STUDIO_JUDGE_QUEUE_URL` |
+| `judge_worker_env` | A judge worker's queues for self-hosted judge models, and its Bedrock region |
+| `worker_policy_json` | The workers' IAM policy. Attach it to the role or user your workers run as (the `<name>-tw-worker` role trusts only EC2) |
+| `queues` | Each queue's URL and ARN |
+| `data_bucket_arn`, `control_bucket_arn` | The buckets |
 
-temperwork doesn't start workers in your account. Start them with your own scaling, based on queue depth (`ApproximateNumberOfMessagesVisible` on the queues): an Auto Scaling group with the user data in its launch template, or by hand. Workers leave on their own once their queue is empty.
+A pod serves one base model: give a queue only pods of one model.
 
 ## Troubleshooting
 

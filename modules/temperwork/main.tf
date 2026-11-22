@@ -8,7 +8,8 @@
 #                      only S3 temperwork writes
 #   queues.tf          the SQS FIFO queues temperwork sends work to
 #   control_plane.tf   the role temperwork assumes in your account
-#   workers.tf         the role and instance profile your EC2 workers run with
+#   workers.tf         the workers' permissions, role and instance profile
+#   ec2_workers.tf     optional always-on EC2 workers (ec2_workers > 0)
 
 data "aws_region" "current" {}
 data "aws_partition" "current" {}
@@ -25,4 +26,6 @@ locals {
   control_arn    = "arn:${local.partition}:s3:::${local.control}"
   control_prefix = ".studio/" # the workers expect the control URI to end in .studio/
   control_uri    = "s3://${local.control}/${local.control_prefix}"
+  lora_uri       = "s3://${local.bucket}/${var.prefix}loras/"
+  environment_id = var.environment_id != "" ? var.environment_id : var.name
 }

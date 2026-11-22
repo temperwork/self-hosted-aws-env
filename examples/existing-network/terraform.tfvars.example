@@ -21,6 +21,13 @@ vpc_endpoint_ids = ["vpce-0123456789abcdef0"]
 # To use one you already have (empty, and not your data's bucket):
 # control_bucket = "acme-temperwork-control"
 
+# Always-on EC2 GPU workers (billed while they run). Store the enrollment
+# token in SSM first: see docs/workers.md.
+# ec2_workers            = 1
+# worker_image           = "<registry>/qwen-image:customer-prod-latest"
+# enroll_token_parameter = "/temperwork/enroll-token"
+# ec2_subnet_ids         = ["subnet-0123456789abcdef0"]
+
 tags = {
   project = "temperwork"
 }

@@ -18,6 +18,15 @@ mock_provider "aws" {
   mock_data "aws_caller_identity" {
     defaults = { account_id = "222222222222" }
   }
+  mock_data "aws_ssm_parameter" {
+    defaults = { value = "ami-0123456789abcdef0" }
+  }
+  mock_data "aws_subnet" {
+    defaults = { vpc_id = "vpc-0123456789abcdef0" }
+  }
+  mock_resource "aws_launch_template" {
+    defaults = { id = "lt-0123456789abcdef0" }
+  }
   mock_resource "aws_iam_role" {
     defaults = { arn = "arn:aws:iam::222222222222:role/temperwork-cp-acme" }
   }
@@ -213,5 +222,87 @@ run "workers_role_is_ec2_only" {
       one(st.principals).type == "Service" && one(st.principals).identifiers == toset(["ec2.amazonaws.com"])
     ])
     error_message = "only EC2 may assume the workers' role"
+  }
+}
+
+run "no_ec2_workers_by_default" {
+  command = apply
+  variables {
+    vpc_endpoint_id = "vpce-gateway"
+  }
+  assert {
+    condition     = length(aws_autoscaling_group.ec2_workers) == 0 && length(aws_launch_template.ec2_workers) == 0 && output.ec2_autoscaling_group == ""
+    error_message = "ec2_workers = 0 starts no instances"
+  }
+  assert {
+    condition     = output.worker_env.STUDIO_CONNECTION_ID == "acme" && output.worker_policy_json != ""
+    error_message = "the outputs have what workers run another way need"
+  }
+}
+
+run "ec2_workers_need_their_settings" {
+  command = plan
+  variables {
+    vpc_endpoint_id = "vpce-gateway"
+    ec2_workers     = 1
+  }
+  expect_failures = [aws_autoscaling_group.ec2_workers]
+}
+
+run "ec2_workers" {
+  command = apply
+  variables {
+    vpc_endpoint_id        = "vpce-gateway"
+    ec2_workers            = 2
+    worker_image           = "ghcr.io/example/qwen-image:customer-prod-latest"
+    judge_worker_image     = "123456789012.dkr.ecr.us-west-2.amazonaws.com/judge-worker:customer-prod-latest"
+    ec2_subnet_ids         = ["subnet-a", "subnet-b"]
+    enroll_token_parameter = "/temperwork/enroll-token"
+    environment_id         = "acme-prod"
+  }
+  assert {
+    condition = (aws_autoscaling_group.ec2_workers[0].min_size == 2 && aws_autoscaling_group.ec2_workers[0].max_size == 2
+    && aws_autoscaling_group.ec2_workers[0].desired_capacity == 2)
+    error_message = "the group keeps exactly ec2_workers instances"
+  }
+  assert {
+    condition = (aws_launch_template.ec2_workers[0].metadata_options[0].http_put_response_hop_limit == 2
+      && aws_launch_template.ec2_workers[0].metadata_options[0].http_tokens == "required"
+      && aws_launch_template.ec2_workers[0].instance_initiated_shutdown_behavior == "terminate"
+    && aws_launch_template.ec2_workers[0].iam_instance_profile[0].name == aws_iam_instance_profile.worker.name)
+    error_message = "the instances use the workers' profile, IMDSv2 with hop limit 2, and end when their workers leave"
+  }
+  assert {
+    condition = alltrue([for want in [
+      "export IDLE_S='0'", "export TOKEN_PARAM='/temperwork/enroll-token'", "export STUDIO_CONNECTION_ID='acme-prod'",
+      "export TRAIN_QUEUE_URL=''", "export REGISTRY_LOGIN='ecr'", "export IMAGE='ghcr.io/example/qwen-image:customer-prod-latest'",
+    ] : strcontains(base64decode(aws_launch_template.ec2_workers[0].user_data), want)])
+    error_message = "the user data carries the settings: always on, the token's parameter, the environment id, the runs queue only"
+  }
+  assert {
+    condition     = length(aws_iam_role_policy_attachment.worker_ecr) == 1 && length(aws_security_group.ec2_workers) == 1
+    error_message = "an ECR image gets pull access; no security groups given gets an outbound-only one"
+  }
+}
+
+run "ec2_trainer_workers" {
+  command = apply
+  variables {
+    vpc_endpoint_id        = "vpce-gateway"
+    ec2_workers            = 1
+    worker_image           = "ghcr.io/example/lora-trainer:customer-prod-latest"
+    worker_queue           = "trainings"
+    ec2_subnet_ids         = ["subnet-a"]
+    ec2_security_group_ids = ["sg-mine"]
+    enroll_token_parameter = "/temperwork/enroll-token"
+  }
+  assert {
+    condition = (strcontains(base64decode(aws_launch_template.ec2_workers[0].user_data), "export QUEUE_URL=''")
+    && strcontains(base64decode(aws_launch_template.ec2_workers[0].user_data), "export JUDGE_QUEUE_URL=''"))
+    error_message = "trainer workers take only the trainings queue, and run no judge worker without judge_worker_image"
+  }
+  assert {
+    condition     = length(aws_security_group.ec2_workers) == 0 && length(aws_iam_role_policy_attachment.worker_ecr) == 0
+    error_message = "given security groups are used as they are; a non-ECR image needs no pull access"
   }
 }

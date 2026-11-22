@@ -14,14 +14,49 @@ output "environment" {
 }
 
 output "worker_env" {
-  description = "The pod service's environment. Add STUDIO_CONNECTION_ID (the id you gave the environment), STUDIO_URL and STUDIO_ENROLL_TOKEN (the environment's card: Make an enrollment token)."
+  description = "Every worker's environment, wherever it runs. Add STUDIO_ENROLL_TOKEN (the environment's card: Make an enrollment token) for its first start. A pod takes STUDIO_QUEUE_URL (inference) or STUDIO_TRAIN_QUEUE_URL (trainer images); a judge worker takes STUDIO_JUDGE_QUEUE_URL, and STUDIO_QUEUES from judge_worker_env."
   value = {
+    STUDIO_URL             = var.temperwork_url
+    STUDIO_CONNECTION_ID   = local.environment_id
     STUDIO_CONTROL_URI     = local.control_uri
-    STUDIO_LORA_URI        = "s3://${local.bucket}/${var.prefix}loras/"
+    STUDIO_LORA_URI        = local.lora_uri
     STUDIO_QUEUE_URL       = aws_sqs_queue.runs.url
     STUDIO_TRAIN_QUEUE_URL = aws_sqs_queue.trainings.url
+    STUDIO_JUDGE_QUEUE_URL = aws_sqs_queue.judges.url
     AWS_REGION             = local.region
   }
+}
+
+output "worker_policy_json" {
+  description = "The workers' IAM policy (queues, both buckets, Bedrock, the enrollment token). Attach it to the role or user of workers you run another way (ECS, Kubernetes, outside AWS)."
+  value       = data.aws_iam_policy_document.worker.json
+}
+
+output "queues" {
+  description = "Every queue's URL and ARN: runs, trainings, judges, and model:<name> for each judge model."
+  value = merge(
+    {
+      runs      = { url = aws_sqs_queue.runs.url, arn = aws_sqs_queue.runs.arn }
+      trainings = { url = aws_sqs_queue.trainings.url, arn = aws_sqs_queue.trainings.arn }
+      judges    = { url = aws_sqs_queue.judges.url, arn = aws_sqs_queue.judges.arn }
+    },
+    { for m, q in aws_sqs_queue.models : "model:${m}" => { url = q.url, arn = q.arn } },
+  )
+}
+
+output "data_bucket_arn" {
+  description = "The data bucket's ARN."
+  value       = local.bucket_arn
+}
+
+output "control_bucket_arn" {
+  description = "The control bucket's ARN."
+  value       = local.control_arn
+}
+
+output "ec2_autoscaling_group" {
+  description = "With ec2_workers: the Auto Scaling group running them."
+  value       = local.ec2 ? aws_autoscaling_group.ec2_workers[0].name : ""
 }
 
 output "bucket" {
@@ -65,8 +100,8 @@ output "ec2_user_data_path" {
 }
 
 output "judge_worker_args" {
-  description = "The judge worker's command line. Replace <id> with the environment's id."
-  value       = "temperwork-worker judge-worker --control ${local.control_uri} --connection <id> --queue-url ${aws_sqs_queue.judges.url}"
+  description = "The judge worker's command line."
+  value       = "temperwork-worker judge-worker --control ${local.control_uri} --connection ${local.environment_id} --queue-url ${aws_sqs_queue.judges.url}"
 }
 
 output "judge_worker_env" {

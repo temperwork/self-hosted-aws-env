@@ -138,14 +138,13 @@ The data bucket also needs a CORS rule for the studio's origin (`studio_origins`
 | SQS FIFO queue | `<name>-judges.fifo` | Judge runs, for judge workers |
 | SQS FIFO queue | `<name>-model-<model>.fifo` | One per entry in `judge_models`: grading work for the model pods you host |
 | S3 bucket | `<name>-data` (or `bucket`) | Your datasets, and what your workers write: outputs (`<prefix>datasets/`) and LoRAs (`<prefix>loras/`) |
-| S3 bucket policy | on the data bucket | Denies the studio's role any write, and any read that doesn't come through your VPC endpoint |
+| S3 bucket policy | on the data bucket | Denies the studio's role any read that doesn't come through your VPC endpoint |
 | S3 CORS rule | on the data bucket | Lets the studio's page `GET` from the bucket |
 | S3 bucket | `<name>-control` (or `control_bucket`) | **Separate from your data.** The studio's records, shared with your workers (`.studio/`) |
-| S3 bucket policy | on the control bucket | TLS only |
 | IAM role | `temperwork-studio-<name>` | Assumed by the studio with your external id |
 | IAM role + instance profile | `<name>-studio-worker` | Attached to your workers |
 
-All queues are encrypted at rest with SQS-managed keys. New buckets block all public access.
+All queues are encrypted at rest with SQS-managed keys.
 
 `examples/complete` adds a VPC, public subnets, an internet gateway, an S3 gateway endpoint and, with `vpn = true`, an S3 interface endpoint and an AWS Client VPN endpoint.
 
@@ -159,8 +158,7 @@ In short:
 
 - The studio's role can **send** messages to your queues.
 - It can **read and write only the control bucket** (`<name>-control/.studio/`), a bucket separate from your data that holds run records, pipelines, worker heartbeats and dataset manifests.
-- It has `s3:GetObject` on the data bucket only so the read links it signs for your browsers work. It can't use that to download your data: the bucket policy denies it any request that doesn't come through your VPC endpoint ([why](docs/security-model.md#why-the-studio-has-s3getobject-on-your-data)). It can't write there at all.
-- The data bucket's policy **denies** the studio's role any read unless the request comes through your VPC endpoint. The studio can sign a link to a file but cannot fetch the file itself. Only a browser inside your network can.
+- It has `s3:GetObject` on the data bucket only so the read links it signs for your browsers work. It can't use that to download your data: the bucket policy denies it any request that doesn't come through your VPC endpoint, so only a browser inside your network can open the links ([why](docs/security-model.md#why-the-studio-has-s3getobject-on-your-data)). It can't write there at all.
 - The studio's role can be assumed only by temperwork's studio role, and only with your external id.
 - Your workers use their own role. They call temperwork.com only to hold a lease for their certificate. Your data stays in your account.
 - Judge workers' LLM steps call Claude through **Bedrock in your account**, so images never leave it.

@@ -5,15 +5,16 @@
 #     judges (judge workers), plus one per judge model you host
 #   - a data bucket: your datasets anywhere in it, and what your workers
 #     write (outputs under <prefix>datasets/, LoRAs under <prefix>loras/).
-#     The studio can't write to it, and can read it only through links that
-#     work from your network
+#     The studio can read it only through links that work through your VPC
+#     endpoints
 #   - a separate control bucket: the records the studio shares with your
 #     workers (execution records, pipeline snapshots, worker heartbeats,
 #     dataset manifests). The only S3 the studio reads and writes
 #   - a role the studio assumes (with an external id), allowed only to send
 #     to the queues, use the control bucket and sign links to the data; and
 #     a bucket policy on the data bucket that lets those links work only
-#     from your network, so the studio can sign a link but never fetch it
+#     through your VPC endpoints, so the studio can sign a link but never
+#     fetch the file itself
 #   - a role for your workers (attach it to your instances, tasks or pods),
 #     with Bedrock for judge workers' LLM steps
 
@@ -51,15 +52,6 @@ resource "aws_s3_bucket" "data" {
   bucket = "${var.name}-data"
 }
 
-resource "aws_s3_bucket_public_access_block" "data" {
-  count                   = var.bucket == "" ? 1 : 0
-  bucket                  = aws_s3_bucket.data[0].id
-  block_public_acls       = true
-  block_public_policy     = true
-  ignore_public_acls      = true
-  restrict_public_buckets = true
-}
-
 # The studio's page fetches listings and files with the links it signs: from
 # the studio's origin, inside your network.
 resource "aws_s3_bucket_cors_configuration" "data" {
@@ -74,53 +66,11 @@ resource "aws_s3_bucket_cors_configuration" "data" {
 
 # --- the control bucket ------------------------------------------------------------
 # Only records: no datasets, outputs or models. The studio and your workers
-# both read and write it; nothing else in your account needs to.
+# both read and write it.
 
 resource "aws_s3_bucket" "control" {
   count  = var.control_bucket == "" ? 1 : 0
   bucket = "${var.name}-control"
-}
-
-resource "aws_s3_bucket_public_access_block" "control" {
-  count                   = var.control_bucket == "" ? 1 : 0
-  bucket                  = aws_s3_bucket.control[0].id
-  block_public_acls       = true
-  block_public_policy     = true
-  ignore_public_acls      = true
-  restrict_public_buckets = true
-}
-
-resource "aws_s3_bucket_ownership_controls" "control" {
-  count  = var.control_bucket == "" ? 1 : 0
-  bucket = aws_s3_bucket.control[0].id
-  rule {
-    object_ownership = "BucketOwnerEnforced"
-  }
-}
-
-data "aws_iam_policy_document" "control" {
-  statement {
-    sid     = "TlsOnly"
-    effect  = "Deny"
-    actions = ["s3:*"]
-    principals {
-      type        = "*"
-      identifiers = ["*"]
-    }
-    resources = [local.control_arn, "${local.control_arn}/*"]
-    condition {
-      test     = "Bool"
-      variable = "aws:SecureTransport"
-      values   = ["false"]
-    }
-  }
-}
-
-resource "aws_s3_bucket_policy" "control" {
-  count      = var.control_bucket == "" ? 1 : 0
-  bucket     = aws_s3_bucket.control[0].id
-  policy     = data.aws_iam_policy_document.control.json
-  depends_on = [aws_s3_bucket_public_access_block.control]
 }
 
 # --- the queues ----------------------------------------------------------------
@@ -225,8 +175,7 @@ data "aws_iam_policy_document" "studio" {
     }
   }
   # The links it signs for your browsers act as this role: allowed here, and
-  # limited to your network by the data bucket's policy below. Read only:
-  # the studio never writes your data.
+  # limited to your VPC endpoints by the data bucket's policy below.
   statement {
     sid       = "SignDataLinks"
     actions   = ["s3:GetObject"]
@@ -250,48 +199,29 @@ resource "aws_iam_role_policy" "studio" {
 data "aws_iam_policy_document" "bucket" {
   source_policy_documents = var.bucket_policy_source_documents
 
-  # Left out only with test_mode_access = open.
-  dynamic "statement" {
-    for_each = var.test_mode_access != "open" ? [1] : []
-    content {
-      sid     = "StudioReadsOnlyFromYourNetwork"
-      effect  = "Deny"
-      actions = ["s3:GetObject", "s3:ListBucket"]
-      principals {
-        type        = "AWS"
-        identifiers = [aws_iam_role.studio.arn]
-      }
-      resources = [local.bucket_arn, "${local.bucket_arn}/*"]
-      condition {
-        test     = local.deny.test
-        variable = local.deny.variable
-        values   = local.deny.values
-      }
-    }
-  }
-  # Belt and braces: whatever IAM policies are later attached to the studio's
-  # role, it can't change your data.
   statement {
-    sid    = "StudioNeverWrites"
-    effect = "Deny"
-    actions = [
-      "s3:PutObject", "s3:DeleteObject", "s3:DeleteObjectVersion", "s3:PutObjectAcl",
-      "s3:PutBucketPolicy", "s3:DeleteBucketPolicy", "s3:PutBucketCORS",
-    ]
+    sid     = "StudioReadsOnlyFromYourNetwork"
+    effect  = "Deny"
+    actions = ["s3:GetObject", "s3:ListBucket"]
     principals {
       type        = "AWS"
       identifiers = [aws_iam_role.studio.arn]
     }
     resources = [local.bucket_arn, "${local.bucket_arn}/*"]
+    condition {
+      test     = local.deny.test
+      variable = local.deny.variable
+      values   = local.deny.values
+    }
   }
 }
 
 # With an existing bucket this replaces its policy: pass the statements it
 # already has in bucket_policy_source_documents to keep them.
 resource "aws_s3_bucket_policy" "data" {
-  bucket     = local.bucket
-  policy     = data.aws_iam_policy_document.bucket.json
-  depends_on = [aws_s3_bucket_public_access_block.data]
+  count  = var.test_mode_access != "open" ? 1 : 0
+  bucket = local.bucket
+  policy = data.aws_iam_policy_document.bucket.json
 }
 
 # --- your workers ----------------------------------------------------------------------

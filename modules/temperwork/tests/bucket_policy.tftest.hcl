@@ -1,10 +1,9 @@
 # The studio's access, offline: `terraform test` in modules/temperwork (no
-# AWS account: a mocked provider, nothing real is made). Checked for each
-# access mode: the studio's role writes only the control bucket,
-# never the data bucket; and it is denied reading the data outside your
-# network (not through your endpoints; with test_mode_access, not from the
-# test ranges, or allowed). The mock doesn't render the JSON, so the statements are checked
-# as the module writes them.
+# AWS account: a mocked provider, nothing real is made). Checked: the
+# studio's role writes only the control bucket, never the data bucket, and
+# is denied reading the data except through your VPC endpoints (or, with
+# test_mode_access, from the test ranges or anywhere). The mock doesn't
+# render the JSON, so the statements are checked as the module writes them.
 
 mock_provider "aws" {
   mock_data "aws_iam_policy_document" { # the resources want a JSON object; the statements are what's checked
@@ -80,12 +79,8 @@ run "test_mode_open" {
     test_mode_access = "open"
   }
   assert {
-    condition     = length([for st in data.aws_iam_policy_document.bucket.statement : st if st.sid == "StudioReadsOnlyFromYourNetwork"]) == 0
-    error_message = "test_mode_access = open: no network restriction on reading"
-  }
-  assert {
-    condition     = length([for st in data.aws_iam_policy_document.bucket.statement : st if st.sid == "StudioNeverWrites"]) == 1
-    error_message = "test_mode_access = open: the studio still can't write the data"
+    condition     = length(aws_s3_bucket_policy.data) == 0
+    error_message = "test_mode_access = open: no bucket policy"
   }
 }
 
@@ -105,11 +100,6 @@ run "studio_writes_only_the_control_bucket" {
       for r in st.resources : !startswith(r, "arn:aws:s3:::acme-data")
     ] if contains(st.actions, "s3:PutObject")]))
     error_message = "the studio's role has no write access to the data bucket"
-  }
-  assert {
-    condition = toset(one([for st in data.aws_iam_policy_document.bucket.statement : st if st.sid == "StudioNeverWrites"]).resources) == toset([
-    "arn:aws:s3:::acme-data", "arn:aws:s3:::acme-data/*"])
-    error_message = "the data bucket's policy denies the studio's role any write"
   }
   assert {
     condition     = output.worker_env.STUDIO_CONTROL_URI == "s3://acme-control/.studio/" && output.environment.control_uri == "s3://acme-control/.studio/"

@@ -24,11 +24,11 @@ provider "aws" {
 }
 
 module "temperwork" {
-  source          = "../../modules/temperwork"
-  name            = var.name
-  studio_role_arn = var.studio_role_arn
-  external_id     = var.external_id
-  studio_origins  = var.studio_origins
+  source              = "../../modules/temperwork"
+  name                = var.name
+  temperwork_role_arn = var.temperwork_role_arn
+  external_id         = var.external_id
+  temperwork_origins  = var.temperwork_origins
 
   bucket                         = var.bucket
   control_bucket                 = var.control_bucket

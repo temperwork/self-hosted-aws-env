@@ -1,5 +1,5 @@
 variable "name" {
-  description = "A short name for the environment (e.g. acme-studio): names the VPC, queues, bucket and roles."
+  description = "A short name for the environment (e.g. acme): names the VPC, queues, bucket and roles."
   type        = string
 }
 
@@ -9,19 +9,19 @@ variable "region" {
   default     = "us-west-2"
 }
 
-variable "studio_role_arn" {
-  description = "The studio's role, from the studio's Add environment form."
+variable "temperwork_role_arn" {
+  description = "The temperwork control plane's own role, from temperwork's Add environment form."
   type        = string
 }
 
 variable "external_id" {
-  description = "The external id from the studio's Add environment form."
+  description = "The external id from temperwork's Add environment form."
   type        = string
   sensitive   = true
 }
 
-variable "studio_origins" {
-  description = "The studio page's origin, for the bucket's CORS rule."
+variable "temperwork_origins" {
+  description = "temperwork page's origin, for the bucket's CORS rule."
   type        = list(string)
   default     = ["https://temperwork.com"]
 }
@@ -57,7 +57,7 @@ variable "judge_models" {
 }
 
 variable "enroll_token_parameter" {
-  description = "The SSM parameter holding the workers' enrollment token (e.g. /studio/enroll-token), or empty."
+  description = "The SSM parameter holding the workers' enrollment token (e.g. /temperwork/enroll-token), or empty."
   type        = string
   default     = ""
 }

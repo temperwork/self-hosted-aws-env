@@ -25,7 +25,7 @@ terraform output worker_env
 
 | Variable | Value |
 |---|---|
-| `STUDIO_CONNECTION_ID` | The id you gave the environment in the studio |
+| `STUDIO_CONNECTION_ID` | The id you gave the environment in temperwork |
 | `STUDIO_CONTROL_URI` | `worker_env.STUDIO_CONTROL_URI`: the control bucket's `.studio/` |
 | `STUDIO_LORA_URI` | `worker_env.STUDIO_LORA_URI`: the data bucket's `<prefix>loras/`, where trainings put LoRAs |
 | `STUDIO_QUEUE_URL` | `worker_env.STUDIO_QUEUE_URL` (runs) |
@@ -45,10 +45,10 @@ A pod serves one base model. Give a runs queue only pods of one model. A worker 
 Store the token in a secret store, not in user data or a task definition. The EC2 script reads it from SSM Parameter Store:
 
 ```bash
-aws ssm put-parameter --name /studio/enroll-token --type SecureString --value '<token>'
+aws ssm put-parameter --name /temperwork/enroll-token --type SecureString --value '<token>'
 ```
 
-Set `enroll_token_parameter = "/studio/enroll-token"` in Terraform so the worker role can read it.
+Set `enroll_token_parameter = "/temperwork/enroll-token"` in Terraform so the worker role can read it.
 
 ## EC2
 
@@ -93,7 +93,7 @@ Add `pods.eks.amazonaws.com` to `worker_principals`, apply, then associate the r
 
 ```bash
 aws eks create-pod-identity-association --cluster-name <cluster> \
-  --namespace <namespace> --service-account studio-pod \
+  --namespace <namespace> --service-account temperwork-worker \
   --role-arn $(terraform output -raw worker_role_arn)
 ```
 
@@ -110,7 +110,7 @@ The worker assumes the role and uses only the role's permissions.
 
 ## Scaling
 
-The studio doesn't start workers in your account. Start them with your own scaling, based on queue depth (`ApproximateNumberOfMessagesVisible` on the queues): an Auto Scaling group, KEDA, or by hand. Workers leave on their own once their queue is empty.
+temperwork doesn't start workers in your account. Start them with your own scaling, based on queue depth (`ApproximateNumberOfMessagesVisible` on the queues): an Auto Scaling group, KEDA, or by hand. Workers leave on their own once their queue is empty.
 
 ## Troubleshooting
 
@@ -118,6 +118,6 @@ The studio doesn't start workers in your account. Start them with your own scali
 |---|---|
 | Worker exits right away | Its log. Common causes: an expired or used enrollment token, or no route to temperwork.com |
 | Runs stay queued | A worker is running for **that** queue, and holds a lease (its card on the Environments page lists enrolled workers) |
-| `AccessDenied` on S3 from a worker | The worker is using the `<name>-studio-worker` role. On EC2, the metadata hop limit is 2 |
+| `AccessDenied` on S3 from a worker | The worker is using the `<name>-tw-worker` role. On EC2, the metadata hop limit is 2 |
 | LLM judge steps fail | Bedrock model access in the region (and in the regions of US / global inference profiles) |
-| Files don't load in the studio | See [browser-access.md](browser-access.md) |
+| Files don't load in temperwork | See [browser-access.md](browser-access.md) |

@@ -1,5 +1,5 @@
 output "environment" {
-  description = "Paste into the studio's Add environment form (with your external id)."
+  description = "Paste into temperwork's Add environment form (with your external id)."
   value       = module.temperwork.environment
 }
 
@@ -24,7 +24,7 @@ output "bucket" {
 }
 
 output "control_bucket" {
-  description = "The control bucket: the studio's records."
+  description = "The control bucket: temperwork's records."
   value       = module.temperwork.control_bucket
 }
 
@@ -58,7 +58,7 @@ output "browser_endpoint" {
 }
 
 output "vpn_client_config" {
-  description = "With vpn: the OpenVPN / AWS VPN Client profile (holds a private key). terraform output -raw vpn_client_config > studio.ovpn"
+  description = "With vpn: the OpenVPN / AWS VPN Client profile (holds a private key). terraform output -raw vpn_client_config > temperwork.ovpn"
   sensitive   = true
   value = var.vpn ? join("\n", [
     "client",

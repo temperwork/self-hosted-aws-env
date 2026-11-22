@@ -2,7 +2,7 @@
 
 A link like [`StudioNeverWrites`](../modules/temperwork/main.tf#L273-L287)
 passes when the linked lines contain the link's text (backticks dropped, or
-its first word for prose like "`studio` policy document"). Run from the
+its first word for prose like "`temperwork` policy document"). Run from the
 repository root.
 """
 import pathlib

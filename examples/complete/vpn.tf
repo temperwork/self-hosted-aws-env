@@ -142,7 +142,7 @@ resource "aws_ec2_client_vpn_endpoint" "this" {
   description            = "${var.name}: browsers to the S3 interface endpoint"
   server_certificate_arn = aws_acm_certificate.server[0].arn
   client_cidr_block      = var.vpn_client_cidr
-  split_tunnel           = true                    # only the VPC's range: the studio and sign-in stay on the client's own internet
+  split_tunnel           = true                    # only the VPC's range: temperwork and sign-in stay on the client's own internet
   dns_servers            = [cidrhost(var.cidr, 2)] # the VPC's resolver: the bucket's name resolves to the interface endpoint
   vpc_id                 = aws_vpc.this.id
   security_group_ids     = [aws_security_group.vpn[0].id]

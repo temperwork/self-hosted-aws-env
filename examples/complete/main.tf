@@ -26,13 +26,13 @@ provider "aws" {
 }
 
 module "temperwork" {
-  source          = "../../modules/temperwork"
-  name            = var.name
-  studio_role_arn = var.studio_role_arn
-  external_id     = var.external_id
-  studio_origins  = var.studio_origins
+  source              = "../../modules/temperwork"
+  name                = var.name
+  temperwork_role_arn = var.temperwork_role_arn
+  external_id         = var.external_id
+  temperwork_origins  = var.temperwork_origins
 
-  # The studio's links to your data work only through this VPC's S3
+  # temperwork's links to your data work only through this VPC's S3
   # endpoints: from instances in the VPC and, with vpn = true, from
   # browsers on the VPN.
   vpc_endpoint_ids = compact([

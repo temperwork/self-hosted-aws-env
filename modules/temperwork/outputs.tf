@@ -1,7 +1,7 @@
-# What to give the studio and your workers.
+# What to give temperwork and your workers.
 
 output "environment" {
-  description = "The studio's Add environment form (Settings → Environments). Add the external id yourself."
+  description = "temperwork's Add environment form (Settings → Environments). Add the external id yourself."
   value = {
     queue_url       = aws_sqs_queue.runs.url
     judge_queue_url = aws_sqs_queue.judges.url
@@ -9,7 +9,7 @@ output "environment" {
     data_root       = "s3://${local.bucket}/${var.prefix}"
     control_uri     = local.control_uri
     region          = local.region
-    credentials     = { kind = "role", role_arn = aws_iam_role.studio.arn }
+    credentials     = { kind = "role", role_arn = aws_iam_role.temperwork.arn }
   }
 }
 
@@ -30,7 +30,7 @@ output "bucket" {
 }
 
 output "control_bucket" {
-  description = "The control bucket: the studio's records, shared with your workers."
+  description = "The control bucket: temperwork's records, shared with your workers."
   value       = local.control
 }
 
@@ -39,9 +39,9 @@ output "control_uri" {
   value       = local.control_uri
 }
 
-output "studio_role_arn" {
-  description = "The role the studio assumes in your account."
-  value       = aws_iam_role.studio.arn
+output "control_plane_role_arn" {
+  description = "The control-plane role: what temperwork assumes in your account."
+  value       = aws_iam_role.temperwork.arn
 }
 
 output "worker_role_arn" {

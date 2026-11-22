@@ -1,5 +1,5 @@
 output "environment" {
-  description = "Paste into the studio's Add environment form (with your external id)."
+  description = "Paste into temperwork's Add environment form (with your external id)."
   value       = module.temperwork.environment
 }
 
@@ -32,7 +32,7 @@ output "worker_role_arn" {
 }
 
 output "control_bucket" {
-  description = "The control bucket: the studio's records."
+  description = "The control bucket: temperwork's records."
   value       = module.temperwork.control_bucket
 }
 

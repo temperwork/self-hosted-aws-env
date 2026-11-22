@@ -1,19 +1,19 @@
-# A temperwork environment in your AWS account: what the studio and your
+# A temperwork environment in your AWS account: what temperwork and your
 # workers share, and nothing more. See the README for the whole picture.
 #
 #   - SQS FIFO queues: runs (the pod service), trainings (trainer pods) and
 #     judges (judge workers), plus one per judge model you host
 #   - a data bucket: your datasets anywhere in it, and what your workers
 #     write (outputs under <prefix>datasets/, LoRAs under <prefix>loras/).
-#     The studio can read it only through links that work through your VPC
+#     temperwork can read it only through links that work through your VPC
 #     endpoints
-#   - a separate control bucket: the records the studio shares with your
+#   - a separate control bucket: the records temperwork shares with your
 #     workers (execution records, pipeline snapshots, worker heartbeats,
-#     dataset manifests). The only S3 the studio reads and writes
-#   - a role the studio assumes (with an external id), allowed only to send
+#     dataset manifests). The only S3 temperwork reads and writes
+#   - a role temperwork assumes (with an external id), allowed only to send
 #     to the queues, use the control bucket and sign links to the data; and
 #     a bucket policy on the data bucket that lets those links work only
-#     through your VPC endpoints, so the studio can sign a link but never
+#     through your VPC endpoints, so temperwork can sign a link but never
 #     fetch the file itself
 #   - a role for your workers (attach it to your instances, tasks or pods),
 #     with Bedrock for judge workers' LLM steps
@@ -52,20 +52,20 @@ resource "aws_s3_bucket" "data" {
   bucket = "${var.name}-data"
 }
 
-# The studio's page fetches listings and files with the links it signs: from
-# the studio's origin, inside your network.
+# temperwork's page fetches listings and files with the links it signs: from
+# temperwork's origin, inside your network.
 resource "aws_s3_bucket_cors_configuration" "data" {
   bucket = local.bucket
   cors_rule {
     allowed_methods = ["GET"]
-    allowed_origins = var.studio_origins
+    allowed_origins = var.temperwork_origins
     allowed_headers = ["*"]
     max_age_seconds = 3600
   }
 }
 
 # --- the control bucket ------------------------------------------------------------
-# Only records: no datasets, outputs or models. The studio and your workers
+# Only records: no datasets, outputs or models. temperwork and your workers
 # both read and write it.
 
 resource "aws_s3_bucket" "control" {
@@ -104,7 +104,7 @@ resource "aws_sqs_queue" "judges" {
 
 # A judge model's own queue: judge workers put an LLM step's files there in
 # chunks, and that model's pods take them. Only your workers use it: the
-# studio never sends to it.
+# temperwork never sends to it.
 resource "aws_sqs_queue" "models" {
   for_each                   = toset(var.judge_models)
   name                       = "${var.name}-model-${replace(each.key, ".", "-")}.fifo"
@@ -114,14 +114,14 @@ resource "aws_sqs_queue" "models" {
   sqs_managed_sse_enabled    = true
 }
 
-# --- the studio's role in your account -------------------------------------------
+# --- the control-plane role: what temperwork assumes in your account ---------------
 
-data "aws_iam_policy_document" "studio_trust" {
+data "aws_iam_policy_document" "temperwork_trust" {
   statement {
     actions = ["sts:AssumeRole"]
     principals {
       type        = "AWS"
-      identifiers = [var.studio_role_arn]
+      identifiers = [var.temperwork_role_arn]
     }
     condition {
       test     = "StringEquals"
@@ -131,16 +131,16 @@ data "aws_iam_policy_document" "studio_trust" {
   }
 }
 
-resource "aws_iam_role" "studio" {
+resource "aws_iam_role" "temperwork" {
   # The hosted studio may assume only roles named temperwork-studio*.
   name                 = "temperwork-studio-${var.name}"
-  assume_role_policy   = data.aws_iam_policy_document.studio_trust.json
+  assume_role_policy   = data.aws_iam_policy_document.temperwork_trust.json
   max_session_duration = 3600
 
   lifecycle {
     precondition {
       condition     = var.test_mode_access != "off" || length(local.endpoints) > 0
-      error_message = "vpc_endpoint_id (or vpc_endpoint_ids) is required: your S3 VPC endpoint, the only way the studio's links to your data work."
+      error_message = "vpc_endpoint_id (or vpc_endpoint_ids) is required: your S3 VPC endpoint, the only way temperwork's links to your data work."
     }
     precondition {
       condition     = var.test_mode_access != "ip" || length(var.test_mode_cidrs) > 0
@@ -148,19 +148,19 @@ resource "aws_iam_role" "studio" {
     }
     precondition {
       condition     = var.control_bucket == "" || var.control_bucket != var.bucket
-      error_message = "control_bucket must be a different bucket from bucket: the studio may write the control bucket, never your data's."
+      error_message = "control_bucket must be a different bucket from bucket: temperwork may write the control bucket, never your data's."
     }
   }
 }
 
-data "aws_iam_policy_document" "studio" {
+data "aws_iam_policy_document" "temperwork" {
   statement {
     sid       = "Queues"
     actions   = ["sqs:SendMessage", "sqs:GetQueueAttributes", "sqs:PurgeQueue"]
     resources = [aws_sqs_queue.runs.arn, aws_sqs_queue.trainings.arn, aws_sqs_queue.judges.arn]
   }
   # The judge models' queues: only your judge workers send to them, but the
-  # studio shows how much work waits there.
+  # temperwork shows how much work waits there.
   dynamic "statement" {
     for_each = length(var.judge_models) > 0 ? [1] : []
     content {
@@ -198,10 +198,10 @@ data "aws_iam_policy_document" "studio" {
   }
 }
 
-resource "aws_iam_role_policy" "studio" {
-  name   = "studio"
-  role   = aws_iam_role.studio.id
-  policy = data.aws_iam_policy_document.studio.json
+resource "aws_iam_role_policy" "temperwork" {
+  name   = "temperwork"
+  role   = aws_iam_role.temperwork.id
+  policy = data.aws_iam_policy_document.temperwork.json
 }
 
 # --- your data: read only inside your network --------------------------------------
@@ -210,12 +210,12 @@ data "aws_iam_policy_document" "bucket" {
   source_policy_documents = var.bucket_policy_source_documents
 
   statement {
-    sid     = "StudioReadsOnlyFromYourNetwork"
+    sid     = "TemperworkReadsOnlyFromYourNetwork"
     effect  = "Deny"
     actions = ["s3:GetObject", "s3:ListBucket"]
     principals {
       type        = "AWS"
-      identifiers = [aws_iam_role.studio.arn]
+      identifiers = [aws_iam_role.temperwork.arn]
     }
     resources = [local.bucket_arn, "${local.bucket_arn}/*"]
     condition {
@@ -260,7 +260,7 @@ data "aws_iam_policy_document" "worker_trust" {
 }
 
 resource "aws_iam_role" "worker" {
-  name                 = "${var.name}-studio-worker"
+  name                 = "${var.name}-tw-worker"
   assume_role_policy   = data.aws_iam_policy_document.worker_trust.json
   max_session_duration = 43200
 }
@@ -335,12 +335,12 @@ data "aws_iam_policy_document" "worker" {
 }
 
 resource "aws_iam_role_policy" "worker" {
-  name   = "studio-worker"
+  name   = "tw-worker"
   role   = aws_iam_role.worker.id
   policy = data.aws_iam_policy_document.worker.json
 }
 
 resource "aws_iam_instance_profile" "worker" {
-  name = "${var.name}-studio-worker"
+  name = "${var.name}-tw-worker"
   role = aws_iam_role.worker.name
 }

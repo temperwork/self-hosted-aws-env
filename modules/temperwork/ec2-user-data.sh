@@ -13,7 +13,7 @@
 # alone.
 #
 # Launch it:
-#   - with the module's worker instance profile (<name>-studio-worker),
+#   - with the module's worker instance profile (<name>-tw-worker),
 #     created with enroll_token_parameter set to TOKEN_PARAM below
 #   - in a subnet that reaches temperwork.com (workers call home for a
 #     lease), the image registry, Hugging Face (models download at boot) and S3
@@ -22,7 +22,7 @@
 #   - with --instance-initiated-shutdown-behavior terminate: each container
 #     leaves once its queue is empty, and then the instance powers off
 #
-# The enrollment token (the environment's card on the studio's Environments
+# The enrollment token (the environment's card on temperwork's Environments
 # page: Make an enrollment token) is read from SSM Parameter Store, never
 # written here. A worker keeps its certificate on the instance's disk, so one
 # enrollment serves its restarts.
@@ -40,7 +40,7 @@ QUEUE_URL='<worker_env STUDIO_QUEUE_URL>'   # the pod service's runs queue ('' :
 TRAIN_QUEUE_URL=''             # a trainer image's: worker_env STUDIO_TRAIN_QUEUE_URL
 JUDGE_QUEUE_URL=''             # also run a judge worker here: judge_worker_args' --queue-url
 JUDGE_IMAGE=''                 # the judge worker image (<registry>/judge-worker:customer-prod-latest); empty: IMAGE's worker, without automation judges
-TOKEN_PARAM='/studio/enroll-token'   # the SSM parameter (SecureString) holding the enrollment token
+TOKEN_PARAM='/temperwork/enroll-token'   # the SSM parameter (SecureString) holding the enrollment token
 ROOT_SHA256=''                 # only for an image not pinned to temperwork.com's root (the customer images are): that root's fingerprint
 IDLE_S=600                     # a worker leaves after its queue has been empty this long
 MAX_MINUTES=0                  # power off after this long whatever happens (0: never)

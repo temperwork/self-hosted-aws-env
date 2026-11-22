@@ -18,7 +18,7 @@ terraform init
 terraform apply
 ```
 
-Then follow the [quick start](../../README.md#4-finish-adding-the-environment-in-the-studio) from step 4.
+Then follow the [quick start](../../README.md#4-finish-adding-the-environment-in-temperwork) from step 4.
 
 ## The network (`network.tf`)
 
@@ -36,10 +36,10 @@ Then follow the [quick start](../../README.md#4-finish-adding-the-environment-in
 Get the client profile:
 
 ```bash
-terraform output -raw vpn_client_config > studio.ovpn
+terraform output -raw vpn_client_config > temperwork.ovpn
 ```
 
-Import `studio.ovpn` into the [AWS VPN Client](https://aws.amazon.com/vpn/client-vpn-download/) or any OpenVPN client. The file contains a private key, so treat it like a password. `*.ovpn` is git-ignored.
+Import `temperwork.ovpn` into the [AWS VPN Client](https://aws.amazon.com/vpn/client-vpn-download/) or any OpenVPN client. The file contains a private key, so treat it like a password. `*.ovpn` is git-ignored.
 
 ### Before real use
 
@@ -59,12 +59,12 @@ The Client VPN is billed per subnet association-hour and per connection-hour. Th
 |---|---|---|
 | `name` | (required) | Names everything. |
 | `region` | `us-west-2` | The AWS region. |
-| `studio_role_arn`, `external_id` | (required) | From the studio's Add environment form. |
+| `temperwork_role_arn`, `external_id` | (required) | From temperwork's Add environment form. |
 | `cidr` | `10.42.0.0/16` | VPC range. Must not overlap `vpn_client_cidr`. |
 | `zone_names` | `[]` | Exactly which zones get a subnet. |
 | `vpn` | `false` | Create the interface endpoint and the Client VPN. |
 | `vpn_client_cidr` | `10.200.0.0/22` | Addresses for VPN clients: a /22 or larger, outside `cidr`. |
-| `judge_models`, `enroll_token_parameter`, `studio_origins` | | Passed to the module. |
+| `judge_models`, `enroll_token_parameter`, `temperwork_origins` | | Passed to the module. |
 | `tags` | `{}` | Tags on everything. |
 
 ## Outputs

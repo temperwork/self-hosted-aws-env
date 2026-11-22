@@ -1,13 +1,13 @@
 # Copy to terraform.tfvars and fill in. terraform.tfvars is git-ignored.
 
-name   = "acme-studio"
+name   = "acme"
 region = "us-west-2"
 
-# From the studio: Settings → Environments → Add environment.
-studio_role_arn = "arn:aws:iam::<temperwork account>:role/<studio role>"
+# From temperwork: Settings → Environments → Add environment.
+temperwork_role_arn = "arn:aws:iam::<temperwork account>:role/<role>"
 external_id     = "<the random external id the form suggests>"
 
-# Your S3 VPC endpoint(s): the only way the studio's links to your data work,
+# Your S3 VPC endpoint(s): the only way temperwork's links to your data work,
 # so your people open files on your VPN or inside the VPC.
 vpc_endpoint_ids = ["vpce-0123456789abcdef0"]
 
@@ -17,7 +17,7 @@ vpc_endpoint_ids = ["vpce-0123456789abcdef0"]
 # bucket                      = "acme-ml-data"
 # existing_bucket_policy_file = "existing-policy.json"
 
-# The studio's records go in a separate bucket, <name>-control by default.
+# temperwork's records go in a separate bucket, <name>-control by default.
 # To use one you already have (empty, and not your data's bucket):
 # control_bucket = "acme-temperwork-control"
 

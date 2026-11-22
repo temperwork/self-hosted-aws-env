@@ -224,3 +224,7 @@ The tests use a mocked AWS provider, so no account is needed. CI runs format, va
 ## Support
 
 Questions go to your temperwork contact or a GitHub issue. Report security problems privately as described in [SECURITY.md](SECURITY.md), not in a public issue.
+
+## License
+
+Copyright 2026 temperwork. Licensed under the [Apache License, Version 2.0](LICENSE).

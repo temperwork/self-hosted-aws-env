@@ -4,16 +4,7 @@ Workers are temperwork's compiled worker, `temperwork-worker`, packaged in conta
 
 ## Images
 
-temperwork gives you access to the worker images. Use the `customer-prod-latest` tag of each:
-
-| Image | Runs | Command |
-|---|---|---|
-| `qwen-image` | Runs (inference steps) | `temperwork-worker pod-service` (the entrypoint) |
-| `lora-trainer` | Trainings | `temperwork-worker pod-service` |
-| `qwen-vl` | A self-hosted judge model (`judge_models`) | `temperwork-worker pod-service` with `STUDIO_POD_RUNS=grading` |
-| `judge-worker` | Judge runs, including automation judges. Needs no GPU | `temperwork-worker judge-worker` |
-
-The customer images trust only temperwork.com's certificate root.
+The worker images are on [GitHub Container Registry](https://github.com/tonymeng?tab=packages&repo_name=gallery). Use their `customer-prod-latest` tags: those images trust only temperwork.com's certificate root.
 
 ## Settings
 

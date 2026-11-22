@@ -132,8 +132,8 @@ data "aws_iam_policy_document" "temperwork_trust" {
 }
 
 resource "aws_iam_role" "temperwork" {
-  # The hosted studio may assume only roles named temperwork-studio*.
-  name                 = "temperwork-studio-${var.name}"
+  # The control plane may assume only roles named temperwork-cp*.
+  name                 = "temperwork-cp-${var.name}"
   assume_role_policy   = data.aws_iam_policy_document.temperwork_trust.json
   max_session_duration = 3600
 

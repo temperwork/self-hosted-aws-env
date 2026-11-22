@@ -25,11 +25,11 @@ The module keeps the control plane's records apart from your data. **These are t
 
 The control bucket is the only S3 location the control plane can write. The module won't accept the same bucket for both.
 
-## The control-plane role: `temperwork-studio-<name>`
+## The control-plane role: `temperwork-cp-<name>`
 
 This is the role in your account that the control plane assumes.
 
-**Who can assume it.** Only the control plane's own role, the ARN you pass as `temperwork_role_arn`, and only with your `external_id` (`sts:ExternalId`). Sessions last at most one hour. The name must start with `temperwork-studio`, because that's the only kind of role the control plane is allowed to assume.
+**Who can assume it.** Only the control plane's own role, the ARN you pass as `temperwork_role_arn`, and only with your `external_id` (`sts:ExternalId`). Sessions last at most one hour. The name must start with `temperwork-cp`, because that's the only kind of role the control plane is allowed to assume.
 
 **What it can do:**
 
@@ -114,5 +114,5 @@ Your workers are the data plane's compute. This is the role they run with.
 Any one of these is enough:
 
 - Delete the environment in temperwork (Settings → Environments). This revokes its workers' certificates.
-- Delete or change the trust policy of the `temperwork-studio-<name>` role, or rotate the external id.
+- Delete or change the trust policy of the `temperwork-cp-<name>` role, or rotate the external id.
 - Run `terraform destroy`.

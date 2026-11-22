@@ -19,7 +19,7 @@ mock_provider "aws" {
     defaults = { account_id = "222222222222" }
   }
   mock_resource "aws_iam_role" {
-    defaults = { arn = "arn:aws:iam::222222222222:role/temperwork-studio-acme" }
+    defaults = { arn = "arn:aws:iam::222222222222:role/temperwork-cp-acme" }
   }
   mock_resource "aws_s3_bucket" {
     defaults = { bucket = "acme-control" }
@@ -49,7 +49,7 @@ run "vpce" {
   }
   assert {
     condition = alltrue([for st in data.aws_iam_policy_document.bucket.statement :
-    one(st.principals).identifiers == toset(["arn:aws:iam::222222222222:role/temperwork-studio-acme"])])
+    one(st.principals).identifiers == toset(["arn:aws:iam::222222222222:role/temperwork-cp-acme"])])
     error_message = "the data bucket's statements name only temperwork's role"
   }
   assert {

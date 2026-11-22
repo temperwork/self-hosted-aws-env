@@ -8,7 +8,7 @@ This repository is a Terraform module, [`modules/temperwork`](modules/temperwork
 
 ```
           temperwork.com: the control plane
-                       │  assumes temperwork-studio-<name>  (with your external id)
+                       │  assumes temperwork-cp-<name>  (with your external id)
                        │  ├─ sqs:SendMessage            → your queues
                        │  ├─ s3 read/write              → <name>-control/.studio/ only
                        │  └─ signs GET links            → <name>-data, usable only through your VPC endpoint
@@ -142,7 +142,7 @@ The data bucket also needs a CORS rule for temperwork's origin (`temperwork_orig
 | S3 bucket policy | on the data bucket | Denies the control-plane role any read that doesn't come through your VPC endpoint |
 | S3 CORS rule | on the data bucket | Lets temperwork's page `GET` from the bucket |
 | S3 bucket | `<name>-control` (or `control_bucket`) | **Separate from your data.** temperwork's records, shared with your workers (`.studio/`) |
-| IAM role | `temperwork-studio-<name>` | The control-plane role: assumed by temperwork with your external id |
+| IAM role | `temperwork-cp-<name>` | The control-plane role: assumed by temperwork with your external id |
 | IAM role + instance profile | `<name>-tw-worker` | Attached to your workers |
 
 All queues are encrypted at rest with SQS-managed keys.
@@ -164,7 +164,7 @@ In short:
 - Your workers use their own role. They call temperwork.com only to hold a lease for their certificate. Your data stays in your account.
 - Judge workers' LLM steps call Claude through **Bedrock in your account**, so images never leave it.
 
-To revoke access, delete the environment in temperwork and its workers stop within one lease. Or run `terraform destroy`, or delete the `temperwork-studio-<name>` role.
+To revoke access, delete the environment in temperwork and its workers stop within one lease. Or run `terraform destroy`, or delete the `temperwork-cp-<name>` role.
 
 [docs/security-model.md](docs/security-model.md) lists every permission.
 

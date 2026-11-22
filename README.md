@@ -165,7 +165,7 @@ In short:
 
 - The studio's role can **send** messages to your queues.
 - It can **read and write only the control bucket** (`<name>-control/.studio/`), a bucket separate from your data that holds run records, pipelines, worker heartbeats and dataset manifests.
-- It can **sign** read links to the data bucket, but it has no write access there, and the data bucket's policy denies it writes outright.
+- It has `s3:GetObject` on the data bucket only so the read links it signs for your browsers work. It can't use that to download your data: the bucket policy denies it any request from outside your network ([why](docs/security-model.md#why-the-studio-has-s3getobject-on-your-data)). It can't write there at all.
 - The data bucket's policy **denies** the studio's role any read unless the request comes from your network. The studio can sign a link to a file but cannot fetch the file itself. Only a browser inside your network can.
 - The studio's role can be assumed only by temperwork's studio role, and only with your external id.
 - Your workers use their own role. They call temperwork.com only to hold a lease for their certificate. Your data stays in your account.

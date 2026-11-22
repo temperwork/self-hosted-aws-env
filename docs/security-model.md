@@ -31,31 +31,55 @@ The control bucket is the only S3 location the studio can write. Its bucket poli
 | `sqs:SendMessage`, `sqs:GetQueueAttributes`, `sqs:PurgeQueue` | `arn:aws:sqs:<region>:<account>:<name>-runs.fifo`<br>`arn:aws:sqs:<region>:<account>:<name>-trainings.fifo`<br>`arn:aws:sqs:<region>:<account>:<name>-judges.fifo` | Queue work, show queue depth, and clear a queue from the studio |
 | `s3:GetObject`, `s3:PutObject` | `arn:aws:s3:::<name>-control/.studio/*`<br>(for example `.studio/executions/<id>.json`, `.studio/workers/<id>.json`, ...) | Write run records and read results |
 | `s3:ListBucket` | `arn:aws:s3:::<name>-control`, only with `s3:prefix` = `.studio/*` | List the records |
-| `s3:GetObject` | `arn:aws:s3:::<name>-data/*`<br>(for example `arn:aws:s3:::<name>-data/faces/0001.jpg`, `arn:aws:s3:::<name>-data/<prefix>datasets/<output>/...`, ...) | So the file links it signs for your browsers work. **The data bucket policy denies this outside your network** |
-| `s3:ListBucket` | `arn:aws:s3:::<name>-data` | So the listing links it signs for your browsers work. **The data bucket policy denies this outside your network** |
+| `s3:GetObject` | `arn:aws:s3:::<name>-data/*`<br>(for example `arn:aws:s3:::<name>-data/faces/0001.jpg`, `arn:aws:s3:::<name>-data/<prefix>datasets/<output>/...`, ...) | So the file links it signs for your browsers work. **Temperwork can't use it to download your data**: see [Why the studio has `s3:GetObject` on your data](#why-the-studio-has-s3getobject-on-your-data) |
+| `s3:ListBucket` | `arn:aws:s3:::<name>-data` | So the folder-listing links it signs for your browsers work. Limited the same way as `s3:GetObject` |
 
 It **cannot**:
 
 - receive or delete queue messages
 - send to the judge models' queues (`arn:aws:sqs:<region>:<account>:<name>-model-*.fifo`)
-- write, delete or change anything in the data bucket
+- download or list your data from its own servers ([`StudioReadsOnlyFromYourNetwork`](../modules/temperwork/main.tf#L254-L272))
+- write, delete or change anything in the data bucket ([`StudioNeverWrites`](../modules/temperwork/main.tf#L273-L287))
 - touch anything else in your account
+
+The role's whole IAM policy is the [`studio` policy document](../modules/temperwork/main.tf#L207-L241).
+
+## Why the studio has `s3:GetObject` on your data
+
+The studio's page shows your images and folder listings, but your data never passes through temperwork. The studio gives your people's browsers **presigned URLs**, and each browser downloads the file directly from your bucket.
+
+- **Signing a URL doesn't touch S3.** A presigned URL is the request, signed locally with the studio role's credentials. Making one sends nothing to S3, so the studio doesn't download anything when it signs.
+- **The URL is checked when it's used, as the role that signed it.** When a browser opens the link, S3 checks the request as the studio's role. So the role needs `s3:GetObject` ([`SignDataLinks`](../modules/temperwork/main.tf#L228-L235)), or the link would be refused.
+- **The bucket policy decides where the link can be used.** S3 also checks the data bucket's policy against the network the request comes from. [`StudioReadsOnlyFromYourNetwork`](../modules/temperwork/main.tf#L254-L272) denies the studio's role `s3:GetObject` and `s3:ListBucket` unless the request arrives through your VPC endpoints (`browser_access = vpce`) or from your IP ranges (`ip`). The test for "outside your network" is the [`outside` local](../modules/temperwork/main.tf#L36-L45).
+
+So:
+
+| Request | Result |
+|---|---|
+| A browser on your VPN or in your VPC opens a link the studio signed | Allowed: the studio's role, from your network |
+| temperwork's servers open a link they signed, or call `GetObject` with the role directly | **Denied**: the studio's role, from outside your network |
+| Someone who got hold of a link opens it from outside your network | **Denied**, and the link expires anyway |
+
+An explicit Deny in a bucket policy overrides any Allow, so temperwork can't lift it by changing the role's own policy. Only someone who can change your bucket's policy can, and [`StudioNeverWrites`](../modules/temperwork/main.tf#L273-L287) denies the studio's role `s3:PutBucketPolicy` and `s3:DeleteBucketPolicy`.
+
+Two settings weaken this, so avoid them for real data:
+
+- **`browser_access = open`** leaves out `StudioReadsOnlyFromYourNetwork`, and then the studio could download your data.
+- **`browser_access = ip` with ranges temperwork could also send from** (a very broad range, or a shared public proxy) would let temperwork's requests through. `vpce` doesn't have this problem: only traffic inside your VPC can come through your endpoint.
 
 ## The data bucket's policy
 
-The module writes these **Deny** statements for the studio's role on `arn:aws:s3:::<name>-data` and `arn:aws:s3:::<name>-data/*`:
+The [data bucket's policy](../modules/temperwork/main.tf#L251-L296) has these **Deny** statements for the studio's role on `arn:aws:s3:::<name>-data` and `arn:aws:s3:::<name>-data/*`:
 
 | Statement | Denies | When |
 |---|---|---|
-| `StudioReadsOnlyFromYourNetwork` | `s3:GetObject`, `s3:ListBucket` | The request doesn't come from your network (see below). Not added with `browser_access = open` |
-| `StudioNeverWrites` | `s3:PutObject`, `s3:DeleteObject`, `s3:DeleteObjectVersion`, `s3:PutObjectAcl`, `s3:PutBucketPolicy`, `s3:DeleteBucketPolicy`, `s3:PutBucketCORS` | Always, whatever IAM policies are attached to the role later |
+| [`StudioReadsOnlyFromYourNetwork`](../modules/temperwork/main.tf#L254-L272) | `s3:GetObject`, `s3:ListBucket` | The request doesn't come from your network (see below). Not added with `browser_access = open` |
+| [`StudioNeverWrites`](../modules/temperwork/main.tf#L273-L287) | `s3:PutObject`, `s3:DeleteObject`, `s3:DeleteObjectVersion`, `s3:PutObjectAcl`, `s3:PutBucketPolicy`, `s3:DeleteBucketPolicy`, `s3:PutBucketCORS` | Always, whatever IAM policies are attached to the role later |
 
 "Your network" means:
 
 - **vpce**: the request came through one of your listed VPC endpoints (`aws:SourceVpce` in `vpc_endpoint_ids`, for example `vpce-0123456789abcdef0`, ...). Requests from the internet carry no `aws:SourceVpce`, so they are denied.
 - **ip**: the request came from one of your `browser_cidrs` (`aws:SourceIp`, for example `203.0.113.0/24`, ...). A request through *any* VPC endpoint carries no source IP, so it is denied as well. That includes an endpoint in temperwork's own VPC.
-
-A presigned URL carries the signer's identity. When your browser uses a link the studio signed, AWS evaluates the request as the studio's role, coming from your browser's network. The studio can therefore create a working link, but if the studio's servers tried to fetch the file themselves, the request would come from outside your network and be denied.
 
 With `browser_access = open`, only `StudioNeverWrites` is added, and the studio's role can read your data from anywhere. Use `open` only for non-sensitive test data.
 

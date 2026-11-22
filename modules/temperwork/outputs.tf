@@ -10,10 +10,10 @@ locals {
       { STUDIO_POD_MODEL = e.model, STUDIO_POD_RUNS = e.work == "judging" ? "grading" : e.work },
       e.work == "training" ? {
         STUDIO_TRAIN_QUEUE_URL = aws_sqs_queue.workers[k].url
-        STUDIO_TRAIN_QUEUE_ID  = local.queue_ids[k]
+        STUDIO_TRAIN_QUEUE_ID  = local.temperwork_queue_ids[k]
         } : e.work == "inference" ? {
         STUDIO_QUEUE_URL       = aws_sqs_queue.workers[k].url
-        STUDIO_QUEUE_ID        = local.queue_ids[k]
+        STUDIO_QUEUE_ID        = local.temperwork_queue_ids[k]
         STUDIO_MODEL_QUEUE_URL = aws_sqs_queue.workers[k].url
       } : { STUDIO_MODEL_QUEUE_URL = aws_sqs_queue.workers[k].url },
     )
@@ -22,8 +22,9 @@ locals {
 }
 
 output "environment" {
-  description = "temperwork's Add environment form (Settings → Environments). Add the external id yourself. temperwork uses only the queues listed here: each has the id temperwork sends that work under, the work and model it's for, and its URL."
+  description = "temperwork's Add environment form (Settings → Environments): paste `terraform output -json environment` into it, then add the external id. temperwork uses only the queues listed here (as conn:<id>:<queue id>): each has its id, the work and model it's for, and its URL."
   value = {
+    id = local.environment_id
     queues = concat(
       [for k, e in local.entries : {
         id    = local.queue_ids[k]

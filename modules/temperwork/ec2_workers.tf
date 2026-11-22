@@ -50,10 +50,10 @@ locals {
         POD_RUNS  = w.work == "judging" ? "grading" : w.work # the worker's own name for judging
         }, w.work == "training" ? {
         TRAIN_QUEUE_URL = aws_sqs_queue.workers[k].url
-        TRAIN_QUEUE_ID  = local.queue_ids[k]
+        TRAIN_QUEUE_ID  = local.temperwork_queue_ids[k]
         } : w.work == "inference" ? {
         QUEUE_URL       = aws_sqs_queue.workers[k].url
-        QUEUE_ID        = local.queue_ids[k]
+        QUEUE_ID        = local.temperwork_queue_ids[k]
         MODEL_QUEUE_URL = aws_sqs_queue.workers[k].url
         } : {
         MODEL_QUEUE_URL = aws_sqs_queue.workers[k].url

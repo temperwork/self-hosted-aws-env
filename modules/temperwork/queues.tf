@@ -17,6 +17,10 @@ locals {
   # model:<model> for inference and judging, training:<model> for training.
   queue_ids = { for k, e in local.entries : k => "${e.work == "training" ? "training" : "model"}:${e.model}" }
 
+  # The same queue as temperwork names it across environments,
+  # conn:<environment id>:<its id>: what the pods tell temperwork they serve.
+  temperwork_queue_ids = { for k, id in local.queue_ids : k => "conn:${local.environment_id}:${id}" }
+
   # temperwork sends to inference and training queues; judging queues are fed
   # by your judge worker (the files of LLM steps on a self-hosted judge model).
   sent_by_temperwork = [for k, e in local.entries : aws_sqs_queue.workers[k].arn if e.work != "judging"]

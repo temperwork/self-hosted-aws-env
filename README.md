@@ -91,21 +91,22 @@ Store the state somewhere durable. Each example's `main.tf` has a commented-out 
 ### 4. Finish adding the environment in temperwork
 
 ```bash
-terraform output environment
+terraform output -json environment
 ```
 
-Copy the values into the Add environment form:
+Paste the output into the Add environment form's **From temperwork/self-hosted-aws-env** box. It fills in the id, region, queues, data root, control prefix and role ARN. Check the **External id** is the one you put in `terraform.tfvars`, then save.
 
 | Form field | Output |
 |---|---|
+| Id | `environment.id` (`environment_id`, default `name`) |
 | Region | `environment.region` |
-| Queues | `environment.queues`: each queue's id, the work and model it's for, and its URL. temperwork uses only these |
+| Queues | `environment.queues`: each queue's id and URL. temperwork sends a model's work only to its queue |
 | Data root | `environment.data_root` |
-| Control URI | `environment.control_uri` |
+| Control prefix | `environment.control_uri` |
 | Role ARN | `environment.credentials.role_arn` |
 | External id | the same value you put in `terraform.tfvars` |
 
-Save the form, then click **Test** on the environment's card. Test checks each queue and writes and reads back a file in the control bucket.
+Then click **Test** on the environment's card. It checks each queue and writes and reads back a file in the control bucket.
 
 ### 5. Start workers
 

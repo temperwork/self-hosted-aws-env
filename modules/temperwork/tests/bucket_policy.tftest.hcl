@@ -201,8 +201,8 @@ run "a_queue_per_worker_entry" {
     error_message = "each workers entry has its own queue, named after its key"
   }
   assert {
-    condition = (output.workers["trainer"].env.STUDIO_TRAIN_QUEUE_ID == "training:qwen-image-edit-2511"
-      && output.workers["edit"].env.STUDIO_QUEUE_ID == "model:qwen-image-edit-2511"
+    condition = (output.workers["trainer"].env.STUDIO_TRAIN_QUEUE_ID == "conn:acme:training:qwen-image-edit-2511"
+      && output.workers["edit"].env.STUDIO_QUEUE_ID == "conn:acme:model:qwen-image-edit-2511"
       && output.judge_worker.models["vl"].env.STUDIO_POD_RUNS == "grading"
     && !contains(keys(output.judge_worker.models["vl"].env), "STUDIO_QUEUE_URL"))
     error_message = "each entry's pods get the settings for their model and work"
@@ -375,14 +375,14 @@ run "ec2_workers" {
   assert {
     condition = alltrue([for want in [
       "export IDLE_S='0'", "export TOKEN_PARAM='/temperwork/enroll-token'", "export STUDIO_CONNECTION_ID='acme-prod'",
-      "export POD_MODEL='qwen-image-edit-2511'", "export POD_RUNS='inference'", "export QUEUE_ID='model:qwen-image-edit-2511'",
+      "export POD_MODEL='qwen-image-edit-2511'", "export POD_RUNS='inference'", "export QUEUE_ID='conn:acme-prod:model:qwen-image-edit-2511'",
       "export TRAIN_QUEUE_URL=''", "export JUDGE_QUEUE_URL=''", "export REGISTRY_LOGIN='none'",
     ] : strcontains(base64decode(aws_launch_template.ec2_workers["edit"].user_data), want)])
     error_message = "an inference entry's instances serve its model on its own queue, always on"
   }
   assert {
     condition = alltrue([for want in [
-      "export POD_RUNS='training'", "export TRAIN_QUEUE_ID='training:qwen-image-edit-2511'", "export QUEUE_URL=''",
+      "export POD_RUNS='training'", "export TRAIN_QUEUE_ID='conn:acme-prod:training:qwen-image-edit-2511'", "export QUEUE_URL=''",
     ] : strcontains(base64decode(aws_launch_template.ec2_workers["trainer"].user_data), want)])
     error_message = "a training entry's instances take only its trainings queue"
   }

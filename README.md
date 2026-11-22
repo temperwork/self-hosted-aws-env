@@ -111,7 +111,7 @@ Save the form, then click **Test** on the environment's card. Test checks each q
 
 On the environment's card, choose **⋯ → Make an enrollment token** and store it in SSM ([docs/workers.md](docs/workers.md#the-enrollment-token)). Then either:
 
-- **let the module run them**: give a `workers` entry (or `judge_worker`) `instances` > 0, set `enroll_token_parameter`, and apply. It keeps that many always-on EC2 instances; or
+- **let the module run them**: give a `workers` entry, judge model or `judge_worker` `instances` > 0, set `enroll_token_parameter`, and apply. It keeps that many always-on EC2 instances; or
 - **run them yourself**: on EC2 with [`ec2-user-data.sh`](modules/temperwork/ec2-user-data.sh), or any other way, with the module's outputs (`worker_env`, `workers`, `worker_policy_json`).
 
 [docs/workers.md](docs/workers.md) covers all three.
@@ -130,9 +130,9 @@ The data bucket also needs a CORS rule for temperwork's origin (`temperwork_orig
 
 | Resource | Name | Purpose |
 |---|---|---|
-| SQS FIFO queue | `<name>-<key>.fifo` | One per `workers` entry: a model's inference, training or grading work |
+| SQS FIFO queue | `<name>-<key>.fifo` | One per `workers` entry (a model's inference or training) and per self-hosted judge model (`judge_worker.models`) |
 | SQS FIFO queue | `<name>-judges.fifo` | Judge runs, for the judge worker |
-| Launch template and Auto Scaling group | `<name>-tw-<key>` | For each `workers` entry (and `judge_worker`) with `instances` > 0 |
+| Launch template and Auto Scaling group | `<name>-tw-<key>`, `<name>-tw-judges` | For each `workers` entry, judge model and `judge_worker` with `instances` > 0 |
 | S3 bucket | `<name>-data` (or `bucket`) | Your datasets, and what your workers write: outputs (`<prefix>datasets/`) and LoRAs (`<prefix>loras/`) |
 | S3 bucket policy | on the data bucket | Denies the control-plane role any read that doesn't come through your VPC endpoint |
 | S3 CORS rule | on the data bucket | Lets temperwork's page `GET` from the bucket |
@@ -193,15 +193,15 @@ The module has no `provider` block. It uses your `aws` provider and its region. 
 | `temperwork_origins` | `["https://temperwork.com"]` | Origins allowed by the data bucket's CORS rule. |
 | `vpc_endpoint_id`, `vpc_endpoint_ids` | (one required) | Your S3 VPC endpoints: the only way temperwork's links to your data work. |
 | `enroll_token_parameter` | `""` | An SSM parameter holding the enrollment token. The worker role can then read it. Required when any worker runs on EC2. |
-| `workers` | `{}` | One entry per model and kind of work (`model`, `work`, `image`, `instances`, ...), each with its own queue. See [docs/workers.md](docs/workers.md#workers-models-and-queues). |
-| `judge_worker` | `{}` | The judge worker's `image` and `instances`. |
+| `workers` | `{}` | One entry per model and kind of work (`model`, `work`: `inference` or `training`, `image`, `instances`, ...), each with its own queue. See [docs/workers.md](docs/workers.md#workers-models-and-queues). |
+| `judge_worker` | `{}` | The judge worker's `image` and `instances`, and the judge models you host (`models`), each with its own queue. |
 | `ec2_subnet_ids`, `ec2_security_group_ids` | `[]` | Where EC2 workers go. |
 | `bedrock_models` | `["anthropic.claude-*"]` | Bedrock models the judge workers' LLM steps may call. Empty: no Bedrock access. |
 | `environment_id` | `name` | The id you gave the environment in temperwork. |
 
 ### Outputs
 
-`environment`, `worker_env`, `workers`, `judge_worker_env`, `judge_worker_args`, `worker_policy_json`, `queues`, `ec2_autoscaling_groups`, `bucket`, `data_bucket_arn`, `control_bucket`, `control_bucket_arn`, `control_uri`, `control_plane_role_arn`, `worker_role_arn`, `worker_role_name`, `worker_instance_profile`, `ec2_user_data_path`. Each output's description is in [`outputs.tf`](modules/temperwork/outputs.tf).
+`environment`, `worker_env`, `workers`, `judge_worker`, `judge_worker_args`, `worker_policy_json`, `queues`, `ec2_autoscaling_groups`, `bucket`, `data_bucket_arn`, `control_bucket`, `control_bucket_arn`, `control_uri`, `control_plane_role_arn`, `worker_role_arn`, `worker_role_name`, `worker_instance_profile`, `ec2_user_data_path`. Each output's description is in [`outputs.tf`](modules/temperwork/outputs.tf).
 
 ## Updating and removing
 

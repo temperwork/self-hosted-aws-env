@@ -8,38 +8,42 @@ The worker images are on [GitHub Container Registry](https://github.com/tonymeng
 
 ## Workers, models and queues
 
-Each worker image serves **one model** and does **one kind of work**:
+Each worker image serves **one model** and does **one kind of work**, on that model's own queue:
 
-| `work` | What it does | Its queue's id |
+| | What it does | Its queue's id |
 |---|---|---|
-| `inference` (default) | Runs pipeline steps on the model | `model:<model>` |
-| `training` | Trains LoRAs for the model | `training:<model>` |
-| `grading` | A self-hosted judge model, grading files for LLM judge steps | `model:<model>` |
+| `workers` entry, `work = "inference"` | Runs pipeline steps on the model | `model:<model>` |
+| `workers` entry, `work = "training"` | Trains LoRAs for the model | `training:<model>` |
+| `judge_worker.models` entry | A judge model you host, judging the files of LLM judge steps | `model:<model>` |
+| `judge_worker` | The judge worker: runs judges, and hands LLM steps to your judge models | `judges` |
 
-You list them in the module's `workers` map, one entry per model and kind of work. Each entry gets its **own queue**. temperwork sends work only to the queues your environment lists (the `environment` output), so it never sends work for a model you don't run. The **judge worker**, which runs judges, is separate (`judge_worker`) and always has the judges queue.
+temperwork sends work only to the queues your environment lists (the `environment` output), so it never sends work for a model you don't run.
 
 ```hcl
 workers = {
-  edit    = { model = "qwen-image-edit-2511", image = "<registry>/qwen-image:customer-prod-latest", instances = 1 }
+  edit    = { model = "qwen-image-edit-2511", work = "inference", image = "<registry>/qwen-image:customer-prod-latest", instances = 1 }
   trainer = { model = "qwen-image-edit-2511", work = "training", image = "<registry>/lora-trainer:customer-prod-latest" }
-  vl      = { model = "qwen3-vl-8b", work = "grading", image = "<registry>/qwen-vl:customer-prod-latest" }
 }
-judge_worker = { image = "<registry>/judge-worker:customer-prod-latest", instances = 1 }
+judge_worker = {
+  image     = "<registry>/judge-worker:customer-prod-latest"
+  instances = 1
+  models    = { vl = { model = "qwen3-vl-8b", image = "<registry>/qwen-vl:customer-prod-latest" } }
+}
 ```
 
-The key (`edit`, `trainer`, ...) names the queue (`<name>-edit.fifo`) and its EC2 resources: 1 to 20 lowercase letters, digits or hyphens.
+The key of each entry (`edit`, `trainer`, `vl`) names its queue, `<name>-<key>.fifo`, and its EC2 resources, `<name>-tw-<key>`. Keys are 1 to 20 lowercase letters, digits or hyphens, and are shared between `workers` and `judge_worker.models`, so they must differ.
 
 | Field | Default | |
 |---|---|---|
 | `model` | (required) | The model, as temperwork names it |
-| `work` | `inference` | `inference`, `training` or `grading` |
+| `work` | (required) | `workers` only: `inference` or `training` |
 | `image` | `""` | The worker image (required with `instances`) |
 | `instances` | `0` | Always-on EC2 instances running it. 0: run it your own way |
 | `instance_type` | `g6e.xlarge` | One pod per GPU |
 | `volume_size` | `200` | GB. Models take 40 to 70 GB unless the instance has local NVMe |
 | `ami_id` | latest Deep Learning Base GPU AMI (Amazon Linux 2023) | Needs Docker and the NVIDIA container toolkit |
 
-`judge_worker` takes `image`, `instances` (default 0), `instance_type` (default `m7i.large`: it needs no GPU), `volume_size` (30) and `ami_id` (default: the latest Amazon Linux 2023).
+`judge_worker` itself takes `image`, `instances` (default 0), `instance_type` (default `m7i.large`: it needs no GPU), `volume_size` (30) and `ami_id` (default: the latest Amazon Linux 2023). Without a judge model of its own, an LLM step on that model calls the model's API.
 
 ## The enrollment token
 
@@ -63,7 +67,7 @@ You can mix them: each entry decides for itself.
 
 ## EC2 workers from the module
 
-Give an entry (or `judge_worker`) `instances` > 0, set `enroll_token_parameter` and `ec2_subnet_ids` (`examples/complete` fills those in), and apply. For each, the module keeps that many instances running in an Auto Scaling group, each with one pod per GPU serving the entry's model on its queue. The workers stay up waiting for work, so **you pay for the instances while they run**, whether or not there's work. Set `instances = 0` to stop them.
+Give an entry, a judge model or `judge_worker` `instances` > 0, set `enroll_token_parameter` and `ec2_subnet_ids` (`examples/complete` fills those in), and apply. For each, the module keeps that many instances running in an Auto Scaling group, each with one pod per GPU serving the entry's model on its queue. The workers stay up waiting for work, so **you pay for the instances while they run**, whether or not there's work. Set `instances = 0` to stop them.
 
 | Input | Default | |
 |---|---|---|
@@ -109,7 +113,7 @@ The control plane only ever talks to the queues and the control bucket, so it do
 |---|---|
 | `worker_env` | What every worker needs (add `STUDIO_ENROLL_TOKEN`) |
 | `workers` | Each entry's queue, and its pods' settings (`env`: the model, the kind of work, the queue's URL and id) |
-| `judge_worker_env` | The judge worker's settings: the judges queue, and the grading queues |
+| `judge_worker` | The judge worker's settings (`env`: the judges queue and the judge models' queues), and each judge model like a `workers` entry (`models`) |
 | `worker_policy_json` | The workers' IAM policy. Attach it to the role or user your workers run as (the `<name>-tw-worker` role trusts only EC2) |
 | `queues` | Each queue's URL and ARN, by id |
 | `data_bucket_arn`, `control_bucket_arn` | The buckets |

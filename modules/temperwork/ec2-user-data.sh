@@ -6,7 +6,8 @@
 # On a GPU instance (the AWS Deep Learning Base GPU AMI, Amazon Linux 2023:
 # docker and the NVIDIA container toolkit) it runs the pod service, one
 # container per GPU, from a worker image serving one model (POD_MODEL) and
-# one kind of work (POD_RUNS: inference, training or grading), on that
+# one kind of work (POD_RUNS: inference, training, or grading for a judge
+# model), on that
 # model's queue. With JUDGE_QUEUE_URL set it also runs a judge worker, which
 # needs no GPU: from JUDGE_IMAGE (the judge worker image, with temperwork's
 # automation judges built in), else from IMAGE (no automation steps). With
@@ -28,7 +29,7 @@
 # enrollment serves its restarts.
 set -euxo pipefail
 
-# --- your settings: the module's outputs (worker_env, workers, judge_worker_env). Each
+# --- your settings: the module's outputs (worker_env, workers, judge_worker). Each
 # can also come from the environment (set, even to empty, it wins): the module's
 # EC2 workers set them that way ---
 IMAGE="${IMAGE-<registry>/qwen-image:customer-prod-latest}"   # the worker image temperwork gives you access to
@@ -38,15 +39,15 @@ STUDIO_CONNECTION_ID="${STUDIO_CONNECTION_ID-<the id you gave the environment>}"
 STUDIO_CONTROL_URI="${STUDIO_CONTROL_URI-<worker_env STUDIO_CONTROL_URI>}"   # in the control bucket
 STUDIO_LORA_URI="${STUDIO_LORA_URI-<worker_env STUDIO_LORA_URI>}"         # in the data bucket
 AWS_REGION="${AWS_REGION-us-west-2}"
-POD_MODEL="${POD_MODEL-}"                 # the model the image serves (workers.<key>.model)
-POD_RUNS="${POD_RUNS-}"                   # inference, training or grading (workers.<key>.work); empty: the image decides
+POD_MODEL="${POD_MODEL-}"                 # the model the image serves (env STUDIO_POD_MODEL in workers.<key>)
+POD_RUNS="${POD_RUNS-}"                   # inference, training, or grading for a judge model (env STUDIO_POD_RUNS); empty: the image decides
 QUEUE_URL="${QUEUE_URL-}"                 # inference: the model's queue (workers.<key>.queue_url)
 QUEUE_ID="${QUEUE_ID-}"                   # inference: its id, model:<model> (workers.<key>.queue_id)
 TRAIN_QUEUE_URL="${TRAIN_QUEUE_URL-}"     # training: the model's trainings queue
 TRAIN_QUEUE_ID="${TRAIN_QUEUE_ID-}"       # training: its id, training:<model>
-MODEL_QUEUE_URL="${MODEL_QUEUE_URL-}"     # inference or grading on a model's own queue
+MODEL_QUEUE_URL="${MODEL_QUEUE_URL-}"     # inference, or a judge model's grading, on the model's own queue
 JUDGE_QUEUE_URL="${JUDGE_QUEUE_URL-}"             # also run a judge worker here: judge_worker_args' --queue-url
-JUDGE_QUEUES="${JUDGE_QUEUES-}"           # the judge worker's self-hosted judge models' queues (judge_worker_env STUDIO_QUEUES)
+JUDGE_QUEUES="${JUDGE_QUEUES-}"           # the judge worker's self-hosted judge models' queues (judge_worker.env STUDIO_QUEUES)
 JUDGE_IMAGE="${JUDGE_IMAGE-}"                 # the judge worker image (<registry>/judge-worker:customer-prod-latest); empty: IMAGE's worker, without automation judges
 TOKEN_PARAM="${TOKEN_PARAM-/temperwork/enroll-token}"   # the SSM parameter (SecureString) holding the enrollment token
 ROOT_SHA256="${ROOT_SHA256-}"                 # only for an image not pinned to temperwork.com's root (the customer images are): that root's fingerprint

@@ -69,4 +69,4 @@ The Client VPN is billed per subnet association-hour and per connection-hour. Th
 
 ## Outputs
 
-The module's (`environment`, `worker_env`, `workers`, `judge_worker_args`, `judge_worker_env`, `worker_policy_json`, `queues`, `ec2_autoscaling_groups`, `bucket`, `control_bucket`, `worker_instance_profile`, `worker_role_arn`, `ec2_user_data_path`), plus `subnet_ids`, `security_group_id`, `browser_endpoint` and `vpn_client_config` (sensitive).
+The module's (`environment`, `worker_env`, `workers`, `judge_worker_args`, `judge_worker`, `worker_policy_json`, `queues`, `ec2_autoscaling_groups`, `bucket`, `control_bucket`, `worker_instance_profile`, `worker_role_arn`, `ec2_user_data_path`), plus `subnet_ids`, `security_group_id`, `browser_endpoint` and `vpn_client_config` (sensitive).

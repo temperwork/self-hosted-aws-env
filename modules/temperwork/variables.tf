@@ -118,19 +118,21 @@ variable "bedrock_models" {
 variable "workers" {
   description = <<-EOT
     One entry per model and kind of work your workers do, keyed by a short name
-    (lowercase letters, digits, hyphens; it names the queue <name>-<key>.fifo and
-    its EC2 resources). Each gets its own queue, which temperwork sends that work to:
+    (lowercase letters, digits, hyphens): the key names its queue
+    <name>-<key>.fifo and its EC2 resources <name>-tw-<key>. Each entry gets its
+    own queue, which temperwork sends that work to:
       model         the model, as temperwork names it (e.g. qwen-image-edit-2511)
-      work          inference (default), training, or grading (a self-hosted judge model)
+      work          inference or training
       image         the worker image serving that model (a customer-prod-latest tag)
       instances     always-on EC2 GPU instances running it (default 0: run it your own way)
       instance_type default g6e.xlarge; one pod per GPU
       volume_size   GB, default 200 (models take 40 to 70 GB unless the instance has local NVMe)
       ami_id        default: the latest AWS Deep Learning Base GPU AMI (Amazon Linux 2023)
+    Self-hosted judge models go in judge_worker.models.
   EOT
   type = map(object({
     model         = string
-    work          = optional(string, "inference")
+    work          = string
     image         = optional(string, "")
     instances     = optional(number, 0)
     instance_type = optional(string, "g6e.xlarge")
@@ -139,31 +141,26 @@ variable "workers" {
   }))
   default = {}
   validation {
-    condition     = alltrue([for k, w in var.workers : can(regex("^[a-z0-9][a-z0-9-]{0,19}$", k)) && k != "judges"])
-    error_message = "workers: keys are 1 to 20 lowercase letters, digits or hyphens, and not \"judges\"."
-  }
-  validation {
-    condition     = alltrue([for w in var.workers : contains(["inference", "training", "grading"], w.work)])
-    error_message = "workers: work is inference, training or grading."
-  }
-  validation {
-    condition     = alltrue([for w in var.workers : w.instances >= 0 && floor(w.instances) == w.instances && (w.instances == 0 || w.image != "")])
-    error_message = "workers: instances is a whole number, 0 or more, and needs image."
-  }
-  validation {
-    condition     = length(distinct([for w in var.workers : "${w.work == "training" ? "training" : "model"}:${w.model}"])) == length(var.workers)
-    error_message = "workers: one entry per model and kind of work (each has its own queue)."
+    condition     = alltrue([for w in var.workers : contains(["inference", "training"], w.work)])
+    error_message = "workers: work is inference or training (self-hosted judge models go in judge_worker.models)."
   }
 }
 
 variable "judge_worker" {
   description = <<-EOT
-    The judge worker, on the judges queue (always made): judge runs, including
-    automation judges. Needs no GPU.
+    Judging: the judge worker, on the judges queue (always made), which runs
+    judges and needs no GPU; and the judge models you host yourselves, which it
+    hands the files of LLM judge steps to.
       image         the judge worker image (a customer-prod-latest tag)
       instances     always-on EC2 instances running it (default 0: run it your own way)
       instance_type default m7i.large
+      volume_size   GB, default 30
       ami_id        default: the latest Amazon Linux 2023
+      models        self-hosted judge models, keyed like workers (the key names the
+                    queue <name>-<key>.fifo): model, image, instances, instance_type
+                    (default g6e.xlarge), volume_size (200), ami_id (the GPU AMI).
+                    Each gets its own queue; without one, LLM steps on that model
+                    call its API instead.
   EOT
   type = object({
     image         = optional(string, "")
@@ -171,6 +168,14 @@ variable "judge_worker" {
     instance_type = optional(string, "m7i.large")
     volume_size   = optional(number, 30)
     ami_id        = optional(string, "")
+    models = optional(map(object({
+      model         = string
+      image         = optional(string, "")
+      instances     = optional(number, 0)
+      instance_type = optional(string, "g6e.xlarge")
+      volume_size   = optional(number, 200)
+      ami_id        = optional(string, "")
+    })), {})
   })
   default = {}
   validation {

@@ -13,9 +13,9 @@ output "judge_worker_args" {
   value       = module.temperwork.judge_worker_args
 }
 
-output "judge_worker_env" {
-  description = "The judge worker's extra environment variables."
-  value       = module.temperwork.judge_worker_env
+output "judge_worker" {
+  description = "The judge worker's settings, and its self-hosted judge models' queues."
+  value       = module.temperwork.judge_worker
 }
 
 output "bucket" {

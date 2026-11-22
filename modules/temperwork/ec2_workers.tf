@@ -1,8 +1,9 @@
-# EC2 workers: for each workers entry with instances > 0, and the judge
-# worker with judge_worker.instances > 0, a launch template and an Auto
-# Scaling group keeping that many always-on instances. Each instance runs
-# ec2-user-data.sh with its settings filled in: one pod per GPU serving the
-# entry's model on its queue, or the judge worker on the judges queue.
+# EC2 workers: for each workers entry and judge model (judge_worker.models)
+# with instances > 0, and the judge worker with judge_worker.instances > 0, a
+# launch template and an Auto Scaling group keeping that many always-on
+# instances. Each instance runs ec2-user-data.sh with its settings filled in:
+# one pod per GPU serving the entry's model on its queue, or the judge worker
+# on the judges queue.
 # Entries left at 0 instances you run your own way; the outputs have what
 # those workers need.
 #
@@ -32,11 +33,11 @@ locals {
     JUDGE_IMAGE     = ""
   }
 
-  # The judge worker's self-hosted judge models: their grading queues.
-  judge_queues = jsonencode([for k, q in local.grading : { id = local.worker_queue_ids[k], kind = "sqs", url = q.url }])
+  # The judge worker's self-hosted judge models: their judging queues.
+  judge_queues = jsonencode([for k, q in local.judging : { id = local.queue_ids[k], kind = "sqs", url = q.url }])
 
   fleets = merge(
-    { for k, w in var.workers : k => {
+    { for k, w in local.entries : k => {
       instances     = w.instances
       instance_type = w.instance_type
       volume_size   = w.volume_size
@@ -46,13 +47,13 @@ locals {
       settings = merge(local.common_settings, {
         IMAGE     = w.image
         POD_MODEL = w.model
-        POD_RUNS  = w.work
+        POD_RUNS  = w.work == "judging" ? "grading" : w.work # the worker's own name for judging
         }, w.work == "training" ? {
         TRAIN_QUEUE_URL = aws_sqs_queue.workers[k].url
-        TRAIN_QUEUE_ID  = local.worker_queue_ids[k]
+        TRAIN_QUEUE_ID  = local.queue_ids[k]
         } : w.work == "inference" ? {
         QUEUE_URL       = aws_sqs_queue.workers[k].url
-        QUEUE_ID        = local.worker_queue_ids[k]
+        QUEUE_ID        = local.queue_ids[k]
         MODEL_QUEUE_URL = aws_sqs_queue.workers[k].url
         } : {
         MODEL_QUEUE_URL = aws_sqs_queue.workers[k].url

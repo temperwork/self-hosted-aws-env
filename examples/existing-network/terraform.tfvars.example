@@ -26,10 +26,14 @@ vpc_endpoint_ids = ["vpce-0123456789abcdef0"]
 # they run); 0 means you run them your own way. Store the enrollment token
 # in SSM first: see docs/workers.md.
 # workers = {
-#   edit    = { model = "qwen-image-edit-2511", image = "<registry>/qwen-image:customer-prod-latest", instances = 1 }
+#   edit    = { model = "qwen-image-edit-2511", work = "inference", image = "<registry>/qwen-image:customer-prod-latest", instances = 1 }
 #   trainer = { model = "qwen-image-edit-2511", work = "training", image = "<registry>/lora-trainer:customer-prod-latest" }
 # }
-# judge_worker           = { image = "<registry>/judge-worker:customer-prod-latest", instances = 1 }
+# judge_worker = {
+#   image     = "<registry>/judge-worker:customer-prod-latest"
+#   instances = 1
+#   models    = { vl = { model = "qwen3-vl-8b", image = "<registry>/qwen-vl:customer-prod-latest" } }
+# }
 # enroll_token_parameter = "/temperwork/enroll-token"
 # ec2_subnet_ids         = ["subnet-0123456789abcdef0"]
 

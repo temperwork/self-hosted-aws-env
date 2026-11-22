@@ -46,14 +46,14 @@ data "aws_iam_policy_document" "temperwork" {
     actions   = ["sqs:SendMessage", "sqs:GetQueueAttributes", "sqs:PurgeQueue"]
     resources = concat(local.sent_by_temperwork, [aws_sqs_queue.judges.arn])
   }
-  # The grading queues: only your judge workers send to them, but temperwork
-  # shows how much work waits there.
+  # The judging queues (self-hosted judge models'): only your judge worker
+  # sends to them, but temperwork shows how much work waits there.
   dynamic "statement" {
-    for_each = length(local.grading) > 0 ? [1] : []
+    for_each = length(local.judging) > 0 ? [1] : []
     content {
-      sid       = "SeeGradingQueues"
+      sid       = "SeeJudgingQueues"
       actions   = ["sqs:GetQueueAttributes"]
-      resources = [for q in local.grading : q.arn]
+      resources = [for q in local.judging : q.arn]
     }
   }
   statement {

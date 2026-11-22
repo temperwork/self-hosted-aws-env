@@ -185,11 +185,11 @@ run "a_queue_per_worker_entry" {
   variables {
     vpc_endpoint_id = "vpce-gateway"
     workers = {
-      edit    = { model = "qwen-image-edit-2511" }
-      turbo   = { model = "qwen-image-2.1-turbo" }
+      edit    = { model = "qwen-image-edit-2511", work = "inference" }
+      turbo   = { model = "qwen-image-2.1-turbo", work = "inference" }
       trainer = { model = "qwen-image-edit-2511", work = "training" }
-      vl      = { model = "qwen3-vl-8b", work = "grading" }
     }
+    judge_worker = { models = { vl = { model = "qwen3-vl-8b" } } }
   }
   assert {
     condition = toset([for q in output.environment.queues : q.id]) == toset([
@@ -203,28 +203,28 @@ run "a_queue_per_worker_entry" {
   assert {
     condition = (output.workers["trainer"].env.STUDIO_TRAIN_QUEUE_ID == "training:qwen-image-edit-2511"
       && output.workers["edit"].env.STUDIO_QUEUE_ID == "model:qwen-image-edit-2511"
-      && output.workers["vl"].env.STUDIO_POD_RUNS == "grading"
-    && !contains(keys(output.workers["vl"].env), "STUDIO_QUEUE_URL"))
+      && output.judge_worker.models["vl"].env.STUDIO_POD_RUNS == "grading"
+    && !contains(keys(output.judge_worker.models["vl"].env), "STUDIO_QUEUE_URL"))
     error_message = "each entry's pods get the settings for their model and work"
   }
   assert {
-    condition     = jsondecode(output.judge_worker_env.STUDIO_QUEUES)[0].id == "model:qwen3-vl-8b"
-    error_message = "the judge worker is told the grading queues"
+    condition     = jsondecode(output.judge_worker.env.STUDIO_QUEUES)[0].id == "model:qwen3-vl-8b"
+    error_message = "the judge worker is told the judge models' queues"
   }
 }
 
-run "temperwork_sees_but_cannot_feed_grading_queues" {
+run "temperwork_sees_but_cannot_feed_judging_queues" {
   command = apply
   variables {
     vpc_endpoint_id = "vpce-gateway"
     workers = {
-      edit = { model = "qwen-image-edit-2511" }
-      vl   = { model = "qwen3-vl-8b", work = "grading" }
+      edit = { model = "qwen-image-edit-2511", work = "inference" }
     }
+    judge_worker = { models = { vl = { model = "qwen3-vl-8b" } } }
   }
   assert {
-    condition     = one([for st in data.aws_iam_policy_document.temperwork.statement : st.actions if st.sid == "SeeGradingQueues"]) == toset(["sqs:GetQueueAttributes"])
-    error_message = "temperwork may read the grading queues' attributes, and nothing else on them"
+    condition     = one([for st in data.aws_iam_policy_document.temperwork.statement : st.actions if st.sid == "SeeJudgingQueues"]) == toset(["sqs:GetQueueAttributes"])
+    error_message = "temperwork may read the judging queues' attributes, and nothing else on them"
   }
   assert {
     condition = alltrue([for st in data.aws_iam_policy_document.temperwork.statement :
@@ -233,7 +233,7 @@ run "temperwork_sees_but_cannot_feed_grading_queues" {
   }
   assert {
     condition     = length(one([for st in data.aws_iam_policy_document.temperwork.statement : st.resources if st.sid == "Queues"])) == 2
-    error_message = "temperwork sends to the inference queue and the judges queue, not the grading queue"
+    error_message = "temperwork sends to the inference queue and the judges queue, not the judging queue"
   }
 }
 
@@ -242,11 +242,11 @@ run "duplicate_queue_ids_are_refused" {
   variables {
     vpc_endpoint_id = "vpce-gateway"
     workers = {
-      a = { model = "qwen-image-edit-2511" }
-      b = { model = "qwen-image-edit-2511" }
+      a = { model = "qwen-image-edit-2511", work = "inference" }
+      b = { model = "qwen-image-edit-2511", work = "inference" }
     }
   }
-  expect_failures = [var.workers]
+  expect_failures = [aws_sqs_queue.judges]
 }
 
 run "bedrock_models" {
@@ -310,7 +310,7 @@ run "no_ec2_workers_by_default" {
   command = apply
   variables {
     vpc_endpoint_id = "vpce-gateway"
-    workers         = { edit = { model = "qwen-image-edit-2511", image = "ghcr.io/example/qwen-image:customer-prod-latest" } }
+    workers         = { edit = { model = "qwen-image-edit-2511", work = "inference", image = "ghcr.io/example/qwen-image:customer-prod-latest" } }
   }
   assert {
     condition     = length(aws_autoscaling_group.ec2_workers) == 0 && length(aws_launch_template.ec2_workers) == 0 && output.ec2_autoscaling_groups == {}
@@ -326,7 +326,7 @@ run "ec2_workers_need_their_settings" {
   command = plan
   variables {
     vpc_endpoint_id = "vpce-gateway"
-    workers         = { edit = { model = "qwen-image-edit-2511", image = "ghcr.io/example/qwen-image:customer-prod-latest", instances = 1 } }
+    workers         = { edit = { model = "qwen-image-edit-2511", work = "inference", image = "ghcr.io/example/qwen-image:customer-prod-latest", instances = 1 } }
   }
   expect_failures = [aws_autoscaling_group.ec2_workers]
 }
@@ -335,9 +335,9 @@ run "instances_need_an_image" {
   command = plan
   variables {
     vpc_endpoint_id = "vpce-gateway"
-    workers         = { edit = { model = "qwen-image-edit-2511", instances = 1 } }
+    workers         = { edit = { model = "qwen-image-edit-2511", work = "inference", instances = 1 } }
   }
-  expect_failures = [var.workers]
+  expect_failures = [aws_sqs_queue.judges]
 }
 
 run "ec2_workers" {
@@ -345,11 +345,14 @@ run "ec2_workers" {
   variables {
     vpc_endpoint_id = "vpce-gateway"
     workers = {
-      edit    = { model = "qwen-image-edit-2511", image = "ghcr.io/example/qwen-image:customer-prod-latest", instances = 2 }
+      edit    = { model = "qwen-image-edit-2511", work = "inference", image = "ghcr.io/example/qwen-image:customer-prod-latest", instances = 2 }
       trainer = { model = "qwen-image-edit-2511", work = "training", image = "ghcr.io/example/lora-trainer:customer-prod-latest", instances = 1, instance_type = "g7e.4xlarge" }
-      vl      = { model = "qwen3-vl-8b", work = "grading" }
     }
-    judge_worker           = { image = "123456789012.dkr.ecr.us-west-2.amazonaws.com/judge-worker:customer-prod-latest", instances = 1 }
+    judge_worker = {
+      image     = "123456789012.dkr.ecr.us-west-2.amazonaws.com/judge-worker:customer-prod-latest"
+      instances = 1
+      models    = { vl = { model = "qwen3-vl-8b" } }
+    }
     ec2_subnet_ids         = ["subnet-a", "subnet-b"]
     enroll_token_parameter = "/temperwork/enroll-token"
     environment_id         = "acme-prod"
@@ -387,10 +390,48 @@ run "ec2_workers" {
     condition = alltrue([for want in [
       "export IMAGE=''", "export REGISTRY_LOGIN='ecr'", "model:qwen3-vl-8b",
     ] : strcontains(base64decode(aws_launch_template.ec2_workers["judges"].user_data), want)])
-    error_message = "the judge worker's instances run only it, pull from ECR, and know the grading queues"
+    error_message = "the judge worker's instances run only it, pull from ECR, and know the judge models' queues"
   }
   assert {
     condition     = length(aws_iam_role_policy_attachment.worker_ecr) == 1 && length(aws_security_group.ec2_workers) == 1
     error_message = "an ECR image gets pull access; no security groups given gets an outbound-only one"
+  }
+}
+
+run "workers_take_inference_or_training" {
+  command = plan
+  variables {
+    vpc_endpoint_id = "vpce-gateway"
+    workers         = { edit = { model = "qwen-image-edit-2511", work = "judging" } }
+  }
+  expect_failures = [var.workers]
+}
+
+run "workers_and_judge_models_share_one_key_namespace" {
+  command = plan
+  variables {
+    vpc_endpoint_id = "vpce-gateway"
+    workers         = { vl = { model = "qwen-image-edit-2511", work = "inference" } }
+    judge_worker    = { models = { vl = { model = "qwen3-vl-8b" } } }
+  }
+  expect_failures = [aws_sqs_queue.judges]
+}
+
+run "judge_model_on_ec2" {
+  command = apply
+  variables {
+    vpc_endpoint_id        = "vpce-gateway"
+    judge_worker           = { models = { vl = { model = "qwen3-vl-8b", image = "ghcr.io/example/qwen-vl:customer-prod-latest", instances = 1 } } }
+    ec2_subnet_ids         = ["subnet-a"]
+    enroll_token_parameter = "/temperwork/enroll-token"
+  }
+  assert {
+    condition = alltrue([for want in ["export POD_RUNS='grading'", "export POD_MODEL='qwen3-vl-8b'", "export QUEUE_URL=''"] :
+    strcontains(base64decode(aws_launch_template.ec2_workers["vl"].user_data), want)])
+    error_message = "a judge model's instances grade on its own queue (the worker's name for judging is grading)"
+  }
+  assert {
+    condition     = output.judge_worker.models["vl"].ec2_autoscaling_group != "" && output.judge_worker.ec2_autoscaling_group == ""
+    error_message = "the judge model runs on EC2; the judge worker itself doesn't"
   }
 }

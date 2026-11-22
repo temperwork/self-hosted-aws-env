@@ -36,7 +36,7 @@ This is the role in your account that the control plane assumes.
 | Permission | On | Why |
 |---|---|---|
 | `sqs:SendMessage`, `sqs:GetQueueAttributes`, `sqs:PurgeQueue` | The queue of each `workers` entry doing inference or training, for example `arn:aws:sqs:<region>:<account>:<name>-edit.fifo`, ...<br>`arn:aws:sqs:<region>:<account>:<name>-judges.fifo` | Queue work, show queue depth, and clear a queue |
-| `sqs:GetQueueAttributes` | The queue of each `workers` entry doing grading, for example `arn:aws:sqs:<region>:<account>:<name>-vl.fifo`, ... | Show how much grading work waits for your judge model pods. Only your judge workers send to these queues |
+| `sqs:GetQueueAttributes` | The queue of each self-hosted judge model (`judge_worker.models`), for example `arn:aws:sqs:<region>:<account>:<name>-vl.fifo`, ... | Show how much judging work waits for your judge model pods. Only your judge worker sends to these queues |
 | `s3:GetObject`, `s3:PutObject` | `arn:aws:s3:::<name>-control/.studio/*`<br>(for example `.studio/executions/<id>.json`, `.studio/workers/<id>.json`, ...) | Write run records and read results |
 | `s3:ListBucket` | `arn:aws:s3:::<name>-control`, only with `s3:prefix` = `.studio/*` | List the records |
 | `s3:GetObject` | `arn:aws:s3:::<name>-data/*`<br>(for example `arn:aws:s3:::<name>-data/faces/0001.jpg`, `arn:aws:s3:::<name>-data/<prefix>datasets/<output>/...`, ...) | So the file links it signs for your browsers work. **The control plane can't use it to download your data**: see [Why the control plane has `s3:GetObject` on your data](#why-the-control-plane-has-s3getobject-on-your-data) |
@@ -45,7 +45,7 @@ This is the role in your account that the control plane assumes.
 It **cannot**:
 
 - receive or delete queue messages. It doesn't need to: to cancel a queued run, the control plane marks the run stopped in the control bucket, and the worker that receives its message drops it. A running judge run is stopped with a `stop` message on its queue
-- send to the grading queues (a self-hosted judge model's). Only your judge workers do
+- send to the judge models' queues. Only your judge worker does
 - download or list your data from temperwork's servers, or from anywhere else outside your VPC ([`TemperworkReadsOnlyFromYourNetwork`](../modules/temperwork/data_bucket.tf#L41-L55))
 - write, delete or change anything in the data bucket: its IAM policy grants no write there, and S3 denies anything not granted
 - touch anything else in your account
@@ -90,8 +90,8 @@ Your workers are the data plane's compute. This is the role they run with.
 
 | Permission | On | Why |
 |---|---|---|
-| `sqs:ReceiveMessage`, `sqs:DeleteMessage`, `sqs:ChangeMessageVisibility`, `sqs:GetQueueAttributes` | Every `workers` entry's queue, for example `arn:aws:sqs:<region>:<account>:<name>-edit.fifo`, ...<br>`arn:aws:sqs:<region>:<account>:<name>-judges.fifo` | Take work |
-| `sqs:SendMessage` | The grading queues, for example `arn:aws:sqs:<region>:<account>:<name>-vl.fifo`, ... (only with a `workers` entry doing grading) | Judge workers hand grading work to your judge model pods |
+| `sqs:ReceiveMessage`, `sqs:DeleteMessage`, `sqs:ChangeMessageVisibility`, `sqs:GetQueueAttributes` | Every `workers` entry's and judge model's queue, for example `arn:aws:sqs:<region>:<account>:<name>-edit.fifo`, ...<br>`arn:aws:sqs:<region>:<account>:<name>-judges.fifo` | Take work |
+| `sqs:SendMessage` | The judge models' queues, for example `arn:aws:sqs:<region>:<account>:<name>-vl.fifo`, ... (only with `judge_worker.models`) | The judge worker hands the files of LLM steps to your judge model pods |
 | `s3:GetObject`, `s3:PutObject` | `arn:aws:s3:::<name>-data/*` (for example `.../<prefix>datasets/<output>/0001.png`, `.../<prefix>loras/<name>_1000.safetensors`, ...)<br>`arn:aws:s3:::<name>-control/*` (for example `.../.studio/executions/<id>.json`, ...) | Read inputs, write outputs and LoRAs, and update run records |
 | `s3:ListBucket` | `arn:aws:s3:::<name>-data`<br>`arn:aws:s3:::<name>-control` | List datasets and records |
 | `bedrock:InvokeModel` | For each of `bedrock_models` (default `anthropic.claude-*`):<br>`arn:aws:bedrock:*::foundation-model/anthropic.claude-*` (for example `anthropic.claude-haiku-4-5-...`, ...)<br>`arn:aws:bedrock:::foundation-model/anthropic.claude-*` (what a global inference profile calls)<br>`arn:aws:bedrock:*:*:inference-profile/*anthropic.claude-*` (for example `us.anthropic.claude-haiku-4-5-...`, ...) | LLM judge steps, run in your account. None with `bedrock_models = []` |

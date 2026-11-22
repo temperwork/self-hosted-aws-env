@@ -23,14 +23,14 @@ data "aws_iam_policy_document" "worker" {
     actions   = ["sqs:ReceiveMessage", "sqs:DeleteMessage", "sqs:ChangeMessageVisibility", "sqs:GetQueueAttributes"]
     resources = concat([for q in aws_sqs_queue.workers : q.arn], [aws_sqs_queue.judges.arn])
   }
-  # Judge workers put grade chunks on the grading queues (a self-hosted judge
-  # model's), and that model's pods take them.
+  # The judge worker puts the files of LLM steps on the judging queues (a
+  # self-hosted judge model's), and that model's pods take them.
   dynamic "statement" {
-    for_each = length(local.grading) > 0 ? [1] : []
+    for_each = length(local.judging) > 0 ? [1] : []
     content {
-      sid       = "GradingQueues"
+      sid       = "JudgingQueues"
       actions   = ["sqs:SendMessage"]
-      resources = [for q in local.grading : q.arn]
+      resources = [for q in local.judging : q.arn]
     }
   }
   # Judge workers' LLM steps call the bedrock_models in Bedrock, in this

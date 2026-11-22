@@ -1,16 +1,37 @@
 # What to give temperwork and your workers.
 
+locals {
+  # What each entry's pods take on top of worker_env.
+  entry_out = { for k, e in local.entries : k => {
+    queue_id  = local.queue_ids[k]
+    queue_url = aws_sqs_queue.workers[k].url
+    queue_arn = aws_sqs_queue.workers[k].arn
+    env = merge(
+      { STUDIO_POD_MODEL = e.model, STUDIO_POD_RUNS = e.work == "judging" ? "grading" : e.work },
+      e.work == "training" ? {
+        STUDIO_TRAIN_QUEUE_URL = aws_sqs_queue.workers[k].url
+        STUDIO_TRAIN_QUEUE_ID  = local.queue_ids[k]
+        } : e.work == "inference" ? {
+        STUDIO_QUEUE_URL       = aws_sqs_queue.workers[k].url
+        STUDIO_QUEUE_ID        = local.queue_ids[k]
+        STUDIO_MODEL_QUEUE_URL = aws_sqs_queue.workers[k].url
+      } : { STUDIO_MODEL_QUEUE_URL = aws_sqs_queue.workers[k].url },
+    )
+    ec2_autoscaling_group = contains(keys(local.fleets), k) ? aws_autoscaling_group.ec2_workers[k].name : ""
+  } }
+}
+
 output "environment" {
-  description = "temperwork's Add environment form (Settings → Environments). Add the external id yourself. temperwork uses only the queues listed here: each has the id temperwork sends that work under, what it's for, and its URL."
+  description = "temperwork's Add environment form (Settings → Environments). Add the external id yourself. temperwork uses only the queues listed here: each has the id temperwork sends that work under, the work and model it's for, and its URL."
   value = {
     queues = concat(
-      [for k, w in var.workers : {
-        id    = local.worker_queue_ids[k]
-        work  = w.work
-        model = w.model
+      [for k, e in local.entries : {
+        id    = local.queue_ids[k]
+        work  = e.work
+        model = e.model
         url   = aws_sqs_queue.workers[k].url
       }],
-      [{ id = "judges", work = "judging", model = "", url = aws_sqs_queue.judges.url }],
+      [{ id = "judges", work = "judges", model = "", url = aws_sqs_queue.judges.url }],
     )
     data_root   = "s3://${local.bucket}/${var.prefix}"
     control_uri = local.control_uri
@@ -20,7 +41,7 @@ output "environment" {
 }
 
 output "worker_env" {
-  description = "What every worker needs, wherever it runs. Add STUDIO_ENROLL_TOKEN (the environment's card: Make an enrollment token) for its first start, and the queue settings in workers (pods) or judge_worker_env (the judge worker)."
+  description = "What every worker needs, wherever it runs. Add STUDIO_ENROLL_TOKEN (the environment's card: Make an enrollment token) for its first start, and its own settings from workers or judge_worker."
   value = {
     STUDIO_URL           = var.temperwork_url
     STUDIO_CONNECTION_ID = local.environment_id
@@ -31,31 +52,19 @@ output "worker_env" {
 }
 
 output "workers" {
-  description = "Each workers entry: its queue, and the settings its pods take on top of worker_env (whether the module runs them on EC2 or you run them yourself)."
-  value = { for k, w in var.workers : k => {
-    queue_id  = local.worker_queue_ids[k]
-    queue_url = aws_sqs_queue.workers[k].url
-    queue_arn = aws_sqs_queue.workers[k].arn
-    env = merge(
-      { STUDIO_POD_MODEL = w.model, STUDIO_POD_RUNS = w.work },
-      w.work == "training" ? {
-        STUDIO_TRAIN_QUEUE_URL = aws_sqs_queue.workers[k].url
-        STUDIO_TRAIN_QUEUE_ID  = local.worker_queue_ids[k]
-        } : w.work == "inference" ? {
-        STUDIO_QUEUE_URL       = aws_sqs_queue.workers[k].url
-        STUDIO_QUEUE_ID        = local.worker_queue_ids[k]
-        STUDIO_MODEL_QUEUE_URL = aws_sqs_queue.workers[k].url
-      } : { STUDIO_MODEL_QUEUE_URL = aws_sqs_queue.workers[k].url },
-    )
-    ec2_autoscaling_group = contains(keys(local.fleets), k) ? aws_autoscaling_group.ec2_workers[k].name : ""
-  } }
+  description = "Each workers entry: its queue, the settings its pods take on top of worker_env (env), and its Auto Scaling group if the module runs it on EC2."
+  value       = { for k in keys(var.workers) : k => local.entry_out[k] }
 }
 
-output "judge_worker_env" {
-  description = "The judge worker's settings on top of worker_env: the judges queue, and the self-hosted judge models' grading queues."
+output "judge_worker" {
+  description = "The judge worker's settings on top of worker_env (env: the judges queue and the judge models' queues), its Auto Scaling group if the module runs it, and each self-hosted judge model like a workers entry (models)."
   value = {
-    STUDIO_JUDGE_QUEUE_URL = aws_sqs_queue.judges.url
-    STUDIO_QUEUES          = local.judge_queues
+    env = {
+      STUDIO_JUDGE_QUEUE_URL = aws_sqs_queue.judges.url
+      STUDIO_QUEUES          = local.judge_queues
+    }
+    ec2_autoscaling_group = contains(keys(local.fleets), "judges") ? aws_autoscaling_group.ec2_workers["judges"].name : ""
+    models                = { for k in keys(var.judge_worker.models) : k => local.entry_out[k] }
   }
 }
 
@@ -72,13 +81,13 @@ output "worker_policy_json" {
 output "queues" {
   description = "Every queue's URL and ARN, by its id: model:<model>, training:<model>, judges."
   value = merge(
-    { for k, w in var.workers : local.worker_queue_ids[k] => { url = aws_sqs_queue.workers[k].url, arn = aws_sqs_queue.workers[k].arn } },
+    { for k in keys(local.entries) : local.queue_ids[k] => { url = aws_sqs_queue.workers[k].url, arn = aws_sqs_queue.workers[k].arn } },
     { judges = { url = aws_sqs_queue.judges.url, arn = aws_sqs_queue.judges.arn } },
   )
 }
 
 output "ec2_autoscaling_groups" {
-  description = "The Auto Scaling groups the module runs, by workers key (and judges for the judge worker)."
+  description = "The Auto Scaling groups the module runs, by key (workers and judge_worker.models), and judges for the judge worker."
   value       = { for k, g in aws_autoscaling_group.ec2_workers : k => g.name }
 }
 

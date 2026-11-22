@@ -5,7 +5,7 @@ temperwork is split in two:
 - **The control plane** is temperwork itself, at temperwork.com. It plans runs, queues them and tracks them.
 - **The data plane** is in your AWS account: your workers, your queues and your data. The work runs here and the data stays here.
 
-This page lists everything the temperwork module lets the control plane do in your account, and everything it lets your workers do. All of it is in [`modules/temperwork/main.tf`](../modules/temperwork/main.tf).
+This page lists everything the temperwork module lets the control plane do in your account, and everything it lets your workers do. All of it is in [`modules/temperwork`](../modules/temperwork): [`control_plane.tf`](../modules/temperwork/control_plane.tf) (the role temperwork assumes), [`data_bucket.tf`](../modules/temperwork/data_bucket.tf) (the data bucket and its policy) and [`workers.tf`](../modules/temperwork/workers.tf) (the workers' role).
 
 In the resource names below:
 
@@ -46,19 +46,19 @@ It **cannot**:
 
 - receive or delete queue messages. It doesn't need to: to cancel a queued run, the control plane marks the run stopped in the control bucket, and the worker that receives its message drops it. A running judge run is stopped with a `stop` message on its queue
 - send to the judge models' queues (`arn:aws:sqs:<region>:<account>:<name>-model-*.fifo`). Only your judge workers do
-- download or list your data from temperwork's servers, or from anywhere else outside your VPC ([`TemperworkReadsOnlyFromYourNetwork`](../modules/temperwork/main.tf#L212-L226))
+- download or list your data from temperwork's servers, or from anywhere else outside your VPC ([`TemperworkReadsOnlyFromYourNetwork`](../modules/temperwork/data_bucket.tf#L41-L55))
 - write, delete or change anything in the data bucket: its IAM policy grants no write there, and S3 denies anything not granted
 - touch anything else in your account
 
-The role's whole IAM policy is the [`temperwork` policy document](../modules/temperwork/main.tf#L156-L199).
+The role's whole IAM policy is the [`temperwork` policy document](../modules/temperwork/control_plane.tf#L43-L86).
 
 ## Why the control plane has `s3:GetObject` on your data
 
 temperwork's page shows your images and folder listings, but your data never passes through the control plane. The control plane gives your people's browsers **presigned URLs**, and each browser downloads the file directly from your bucket.
 
 - **Signing a URL doesn't touch S3.** A presigned URL is the request, signed locally with the control-plane role's credentials. Making one sends nothing to S3, so the control plane doesn't download anything when it signs.
-- **The URL is checked when it's used, as the role that signed it.** When a browser opens the link, S3 checks the request as the control-plane role. So the role needs `s3:GetObject` ([`SignDataLinks`](../modules/temperwork/main.tf#L187-L193)), or the link would be refused.
-- **The bucket policy decides where the control-plane role can read from at all, not just where links work.** S3 checks the data bucket's policy on every request made as the control-plane role, against the network the request comes from. [`TemperworkReadsOnlyFromYourNetwork`](../modules/temperwork/main.tf#L212-L226) denies the role `s3:GetObject` and `s3:ListBucket` unless the request arrives through one of your S3 VPC endpoints (`vpc_endpoint_ids`). That covers a presigned link, and it equally covers temperwork's servers calling `GetObject` directly with the role's credentials: those calls can't come through your VPC endpoint, so they are denied even though the role has `s3:GetObject`. The test for "outside your network" is the [`outside` local](../modules/temperwork/main.tf#L37-L45).
+- **The URL is checked when it's used, as the role that signed it.** When a browser opens the link, S3 checks the request as the control-plane role. So the role needs `s3:GetObject` ([`SignDataLinks`](../modules/temperwork/control_plane.tf#L74-L80)), or the link would be refused.
+- **The bucket policy decides where the control-plane role can read from at all, not just where links work.** S3 checks the data bucket's policy on every request made as the control-plane role, against the network the request comes from. [`TemperworkReadsOnlyFromYourNetwork`](../modules/temperwork/data_bucket.tf#L41-L55) denies the role `s3:GetObject` and `s3:ListBucket` unless the request arrives through one of your S3 VPC endpoints (`vpc_endpoint_ids`). That covers a presigned link, and it equally covers temperwork's servers calling `GetObject` directly with the role's credentials: those calls can't come through your VPC endpoint, so they are denied even though the role has `s3:GetObject`. The test for "outside your network" is the [`outside` local](../modules/temperwork/data_bucket.tf#L27-L35).
 
 So:
 
@@ -72,11 +72,11 @@ The control-plane role can only do what its IAM policy, in your account, allows,
 
 ## The data bucket's policy
 
-The [data bucket's policy](../modules/temperwork/main.tf#L209-L235) has one **Deny** statement for the control-plane role on `arn:aws:s3:::<name>-data` and `arn:aws:s3:::<name>-data/*`:
+The [data bucket's policy](../modules/temperwork/data_bucket.tf#L38-L64) has one **Deny** statement for the control-plane role on `arn:aws:s3:::<name>-data` and `arn:aws:s3:::<name>-data/*`:
 
 | Statement | Denies | When |
 |---|---|---|
-| [`TemperworkReadsOnlyFromYourNetwork`](../modules/temperwork/main.tf#L212-L226) | `s3:GetObject`, `s3:ListBucket` | The request doesn't come through one of your S3 VPC endpoints |
+| [`TemperworkReadsOnlyFromYourNetwork`](../modules/temperwork/data_bucket.tf#L41-L55) | `s3:GetObject`, `s3:ListBucket` | The request doesn't come through one of your S3 VPC endpoints |
 
 Only traffic inside your VPC, or on a VPN into it, can come through your endpoint. A request from the internet, including from temperwork's servers, carries no `aws:SourceVpce` (or a different one), so it is denied.
 

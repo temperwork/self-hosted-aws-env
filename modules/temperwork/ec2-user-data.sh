@@ -46,6 +46,7 @@ QUEUE_ID="${QUEUE_ID-}"                   # inference: its id, model:<model> (wo
 TRAIN_QUEUE_URL="${TRAIN_QUEUE_URL-}"     # training: the model's trainings queue
 TRAIN_QUEUE_ID="${TRAIN_QUEUE_ID-}"       # training: its id, training:<model>
 MODEL_QUEUE_URL="${MODEL_QUEUE_URL-}"     # inference, or a judge model's grading, on the model's own queue
+MODEL_QUEUE_ID="${MODEL_QUEUE_ID-}"       # a judge model: its queue's id, conn:<id>:model:<model>
 JUDGE_QUEUE_URL="${JUDGE_QUEUE_URL-}"             # also run a judge worker here: judge_worker_args' --queue-url
 JUDGE_QUEUES="${JUDGE_QUEUES-}"           # the judge worker's self-hosted judge models' queues (judge_worker.env STUDIO_QUEUES)
 JUDGE_IMAGE="${JUDGE_IMAGE-}"                 # the judge worker image (<registry>/judge-worker:customer-prod-latest); empty: IMAGE's worker, without automation judges
@@ -113,7 +114,7 @@ pod() {   # name, docker args for its device...
   # --ipc=host: a training's data loader outgrows docker's 64 MB /dev/shm.
   docker run "${common[@]}" --restart on-failure --name "$name" --hostname "$name" "$@" --ipc=host \
     -v "$WS:/workspace" -e STUDIO_QUEUE_URL="$QUEUE_URL" -e STUDIO_TRAIN_QUEUE_URL="$TRAIN_QUEUE_URL" \
-    -e STUDIO_MODEL_QUEUE_URL="$MODEL_QUEUE_URL" -e STUDIO_QUEUE_ID="$QUEUE_ID" -e STUDIO_TRAIN_QUEUE_ID="$TRAIN_QUEUE_ID" \
+    -e STUDIO_MODEL_QUEUE_URL="$MODEL_QUEUE_URL" -e STUDIO_MODEL_QUEUE_ID="$MODEL_QUEUE_ID" -e STUDIO_QUEUE_ID="$QUEUE_ID" -e STUDIO_TRAIN_QUEUE_ID="$TRAIN_QUEUE_ID" \
     -e STUDIO_POD_MODEL="$POD_MODEL" -e STUDIO_POD_RUNS="$POD_RUNS" \
     "${idle_pod[@]}" -e STUDIO_POD_DRAIN_S=90 -e STUDIO_POD_INSTANCE_TYPE="$ITYPE" \
     -e STUDIO_POD_PLATFORM=ec2 "$IMAGE"

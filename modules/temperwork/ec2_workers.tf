@@ -28,6 +28,7 @@ locals {
     TRAIN_QUEUE_URL = ""
     TRAIN_QUEUE_ID  = ""
     MODEL_QUEUE_URL = ""
+    MODEL_QUEUE_ID  = ""
     JUDGE_QUEUE_URL = ""
     JUDGE_QUEUES    = ""
     JUDGE_IMAGE     = ""
@@ -57,6 +58,7 @@ locals {
         MODEL_QUEUE_URL = aws_sqs_queue.workers[k].url
         } : {
         MODEL_QUEUE_URL = aws_sqs_queue.workers[k].url
+        MODEL_QUEUE_ID  = local.temperwork_queue_ids[k]
       })
     } if w.instances > 0 },
     var.judge_worker.instances > 0 ? { judges = {

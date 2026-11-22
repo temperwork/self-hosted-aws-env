@@ -15,7 +15,7 @@ locals {
         STUDIO_QUEUE_URL       = aws_sqs_queue.workers[k].url
         STUDIO_QUEUE_ID        = local.temperwork_queue_ids[k]
         STUDIO_MODEL_QUEUE_URL = aws_sqs_queue.workers[k].url
-      } : { STUDIO_MODEL_QUEUE_URL = aws_sqs_queue.workers[k].url },
+      } : { STUDIO_MODEL_QUEUE_URL = aws_sqs_queue.workers[k].url, STUDIO_MODEL_QUEUE_ID = local.temperwork_queue_ids[k] },
     )
     ec2_autoscaling_group = contains(keys(local.fleets), k) ? aws_autoscaling_group.ec2_workers[k].name : ""
   } }

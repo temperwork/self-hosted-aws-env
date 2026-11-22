@@ -426,12 +426,12 @@ run "judge_model_on_ec2" {
     enroll_token_parameter = "/temperwork/enroll-token"
   }
   assert {
-    condition = alltrue([for want in ["export POD_RUNS='grading'", "export POD_MODEL='qwen3-vl-8b'", "export QUEUE_URL=''"] :
+    condition = alltrue([for want in ["export POD_RUNS='grading'", "export POD_MODEL='qwen3-vl-8b'", "export QUEUE_URL=''", "export MODEL_QUEUE_ID='conn:acme:model:qwen3-vl-8b'"] :
     strcontains(base64decode(aws_launch_template.ec2_workers["vl"].user_data), want)])
     error_message = "a judge model's instances grade on its own queue (the worker's name for judging is grading)"
   }
   assert {
-    condition     = output.judge_worker.models["vl"].ec2_autoscaling_group != "" && output.judge_worker.ec2_autoscaling_group == ""
+    condition     = output.judge_worker.models["vl"].ec2_autoscaling_group != "" && output.judge_worker.ec2_autoscaling_group == "" && output.judge_worker.models["vl"].env.STUDIO_MODEL_QUEUE_ID == "conn:acme:model:qwen3-vl-8b"
     error_message = "the judge model runs on EC2; the judge worker itself doesn't"
   }
 }

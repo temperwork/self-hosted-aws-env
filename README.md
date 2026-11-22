@@ -18,7 +18,7 @@ This repository is a Terraform module, [`modules/temperwork`](modules/temperwork
  │  S3: <name>-data      datasets, outputs, LoRAs (control plane:     │
  │                       no writes, no reads from outside your VPC)   │
  │  S3: <name>-control   the control plane's records (.studio/)       │
- │  IAM: <name>-tw-worker  ← your EC2 / ECS / EKS workers             │
+ │  IAM: <name>-tw-worker  ← your EC2 workers                         │
  └────────────────────────────────────────────────────────────────────┘
         ▲
         └── your people's browsers open files through your S3 VPC endpoint
@@ -111,7 +111,7 @@ Save the form, then click **Test** on the environment's card. Test checks each q
 
 ### 5. Start workers
 
-On the environment's card, choose **⋯ → Make an enrollment token**. Then start workers with the role this repository created. [docs/workers.md](docs/workers.md) covers EC2 (with [`ec2-user-data.sh`](modules/temperwork/ec2-user-data.sh)), ECS, EKS and GPUs outside AWS.
+On the environment's card, choose **⋯ → Make an enrollment token**. Then start workers with the role this repository created. [docs/workers.md](docs/workers.md) covers EC2, with [`ec2-user-data.sh`](modules/temperwork/ec2-user-data.sh), and what a worker needs if you run the images another way.
 
 ```bash
 terraform output worker_env

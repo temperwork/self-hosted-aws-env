@@ -42,7 +42,7 @@ A pod serves one base model. Give a runs queue only pods of one model. A worker 
 
 ### Keeping the enrollment token secret
 
-Store the token in a secret store, not in user data or a task definition. The EC2 script reads it from SSM Parameter Store:
+Store the token in a secret store, not in the user data. The EC2 script reads it from SSM Parameter Store:
 
 ```bash
 aws ssm put-parameter --name /temperwork/enroll-token --type SecureString --value '<token>'
@@ -83,34 +83,22 @@ resource "aws_iam_role_policy_attachment" "ecr" {
 }
 ```
 
-## ECS on EC2
+## Running workers another way
 
-Register a task definition with `taskRoleArn` set to `terraform output worker_role_arn`, on a cluster with GPU container instances (the ECS GPU-optimized AMI). Run **tasks**, one per batch of work, rather than a service: a service would restart tasks that left because there was no work. Keep `stopTimeout` (at most 120 s) above `STUDIO_POD_DRAIN_S`, so a stopping task can finish what it's running.
+This repository sets up workers on **EC2**. The worker images aren't tied to it: you can run them however you like, for example on ECS, Kubernetes or GPUs outside AWS.
 
-## EKS
+Whatever runs them, a worker only needs to reach the same things:
 
-Add `pods.eks.amazonaws.com` to `worker_principals`, apply, then associate the role with your pods' service account:
+- **The queues**: it takes work from them (`STUDIO_QUEUE_URL`, `STUDIO_TRAIN_QUEUE_URL`, `STUDIO_JUDGE_QUEUE_URL`).
+- **The control bucket**: it reads the run records the control plane wrote and updates them (`STUDIO_CONTROL_URI`).
+- **The data bucket**: it reads inputs and writes outputs.
+- **temperwork.com**: it enrolls, then holds a lease for its certificate.
 
-```bash
-aws eks create-pod-identity-association --cluster-name <cluster> \
-  --namespace <namespace> --service-account temperwork-worker \
-  --role-arn $(terraform output -raw worker_role_arn)
-```
-
-Mount a shared `ReadWriteMany` volume (for example EFS) at `/workspace` so pods share downloaded models. For pods that start when work arrives and end when the queue is empty, use Jobs, for example KEDA's `ScaledJob` on the SQS queue.
-
-## GPUs outside AWS
-
-A machine outside AWS can't be given a role directly. Create an IAM user (or use an existing role) that may only assume the worker role:
-
-1. Add its ARN to `worker_assumers` and apply.
-2. Give the worker that principal's keys (`AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY`), plus `STUDIO_AWS_ROLE_ARN = terraform output worker_role_arn`.
-
-The worker assumes the role and uses only the role's permissions.
+The control plane only ever talks to the queues and the control bucket, so it doesn't matter to temperwork where your workers run. Give them credentials with the permissions of the `<name>-tw-worker` role, and the settings above.
 
 ## Scaling
 
-temperwork doesn't start workers in your account. Start them with your own scaling, based on queue depth (`ApproximateNumberOfMessagesVisible` on the queues): an Auto Scaling group, KEDA, or by hand. Workers leave on their own once their queue is empty.
+temperwork doesn't start workers in your account. Start them with your own scaling, based on queue depth (`ApproximateNumberOfMessagesVisible` on the queues): an Auto Scaling group with the user data in its launch template, or by hand. Workers leave on their own once their queue is empty.
 
 ## Troubleshooting
 

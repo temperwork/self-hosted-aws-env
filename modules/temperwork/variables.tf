@@ -100,12 +100,6 @@ variable "enroll_token_parameter" {
   }
 }
 
-variable "allow_bedrock_model_subscription" {
-  description = "Let the workers' role subscribe the account to Anthropic models on AWS Marketplace, which Bedrock does on a model's first call. Turn off if you enable the models yourselves."
-  type        = bool
-  default     = true
-}
-
 variable "test_mode_access" {
   description = <<-EOT
     For testing temperwork itself only; leave it off. Loosens where the control-plane role may read the data bucket from:

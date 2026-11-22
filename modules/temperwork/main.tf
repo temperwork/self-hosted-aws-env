@@ -298,22 +298,6 @@ data "aws_iam_policy_document" "worker" {
     actions   = ["bedrock-mantle:CreateInference"]
     resources = ["*"]
   }
-  # So a run that reaches no model can say which ones the account has.
-  statement {
-    sid       = "ListModels"
-    actions   = ["bedrock:ListFoundationModels", "bedrock:ListInferenceProfiles"]
-    resources = ["*"]
-  }
-  # Bedrock enables a model for the account on its first call, by
-  # subscribing to it on AWS Marketplace as the caller.
-  dynamic "statement" {
-    for_each = var.allow_bedrock_model_subscription ? [1] : []
-    content {
-      sid       = "EnableModels"
-      actions   = ["aws-marketplace:ViewSubscriptions", "aws-marketplace:Subscribe"]
-      resources = ["*"]
-    }
-  }
   statement {
     sid       = "Objects"
     actions   = ["s3:GetObject", "s3:PutObject"]

@@ -188,3 +188,16 @@ run "temperwork_sees_but_cannot_feed_judge_model_queues" {
     error_message = "temperwork sends only to the runs, trainings and judges queues"
   }
 }
+
+run "workers_cannot_enable_or_list_models" {
+  command = apply
+  variables {
+    vpc_endpoint_id = "vpce-gateway"
+  }
+  assert {
+    condition = !anytrue(flatten([for st in data.aws_iam_policy_document.worker.statement : [
+      for a in st.actions : startswith(a, "aws-marketplace:") || startswith(a, "bedrock:List")
+    ]]))
+    error_message = "the workers' role has no AWS Marketplace access and no Bedrock list actions"
+  }
+}

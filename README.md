@@ -37,6 +37,7 @@ This repository is a Terraform module, [`modules/temperwork`](modules/temperwork
 
 - An AWS account, and credentials that can create IAM roles, S3 buckets and SQS queues (and VPC resources if you use `examples/complete`).
 - [Terraform](https://developer.hashicorp.com/terraform/install) 1.5 or newer, or OpenTofu 1.6 or newer.
+- If you'll run judges with LLM steps: the Anthropic Claude models **enabled in Amazon Bedrock** in your account (Bedrock console → Model access), in your region and in the regions of the US or global inference profiles you use. Workers can't enable models themselves.
 - A temperwork account. Open **Settings → Environments → Add environment** in temperwork. The form shows two values you'll need:
   - the **role ARN**: the control plane's own role, which your account will trust
   - a random **external id**
@@ -201,7 +202,6 @@ The module has no `provider` block. It uses your `aws` provider and its region. 
 | `worker_assumers` | `[]` | IAM principals that can assume the worker role (workers outside AWS). |
 | `judge_models` | `[]` | Self-hosted judge models. Each gets a queue. |
 | `enroll_token_parameter` | `""` | An SSM parameter holding the enrollment token. The worker role can then read it. |
-| `allow_bedrock_model_subscription` | `true` | Lets workers subscribe the account to Anthropic models on first use. |
 
 ### Outputs
 

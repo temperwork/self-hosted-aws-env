@@ -99,9 +99,9 @@ Your workers are the data plane's compute. This is the role they run with.
 | `s3:ListBucket` | `arn:aws:s3:::<name>-data`<br>`arn:aws:s3:::<name>-control` | List datasets and records |
 | `bedrock:InvokeModel` | `arn:aws:bedrock:*::foundation-model/anthropic.*` (for example `anthropic.claude-haiku-4-5-...`, ...)<br>`arn:aws:bedrock:::foundation-model/anthropic.*`<br>`arn:aws:bedrock:*:*:inference-profile/*anthropic.*` (for example `us.anthropic.claude-haiku-4-5-...`, `global.anthropic....`, ...) | LLM judge steps, run in your account |
 | `bedrock-mantle:CreateInference` | `*` (the Bedrock Messages API takes no resource) | LLM judge steps through the Messages API |
-| `bedrock:ListFoundationModels`, `bedrock:ListInferenceProfiles` | `*` (list actions take no resource) | Report which models the account has when a call fails |
-| `aws-marketplace:ViewSubscriptions`, `aws-marketplace:Subscribe` | `*` (Marketplace takes no resource) | Bedrock enables a model on its first call. Turn off with `allow_bedrock_model_subscription = false` if you enable models yourself |
 | `ssm:GetParameter` | `arn:aws:ssm:<region>:<account>:parameter/temperwork/enroll-token` (the value of `enroll_token_parameter`, only if set) | Read the enrollment token at boot |
+
+Workers **can't enable** Bedrock models: they have no AWS Marketplace access. An admin enables the Anthropic models in your account first (see the README's prerequisites). Until then, a judge's LLM steps fail with an error saying the model isn't enabled.
 
 ## What crosses between the planes
 

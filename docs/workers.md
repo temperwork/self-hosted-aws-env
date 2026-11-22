@@ -4,7 +4,9 @@ Workers are temperwork's compiled worker, `temperwork-worker`, packaged in conta
 
 ## Images
 
-The worker images are on [GitHub Container Registry](https://github.com/tonymeng?tab=packages&repo_name=gallery). Use their `customer-prod-latest` tags: those images trust only temperwork.com's certificate root.
+The worker images aren't published yet. Until they are, this repository is here to review: read the module and its policies, and run `terraform plan` or `apply` with `workers` and `judge_worker` left empty (the default), which creates the buckets, the roles and the judges queue but no model queues or workers.
+
+Once published, this section will say where to pull them from. Use their `customer-prod-latest` tags: those images trust only temperwork.com's certificate root.
 
 ## Workers, models and queues
 

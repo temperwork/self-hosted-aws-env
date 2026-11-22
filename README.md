@@ -6,6 +6,8 @@ temperwork is split in two. The **control plane** is temperwork itself, at tempe
 
 This repository is a Terraform module, [`modules/temperwork`](modules/temperwork), that you add to your existing AWS setup. It creates the queues, two buckets (one for your data, a separate one for the control plane's records), the IAM role the control plane assumes, and an IAM role for your workers. [`examples/complete`](examples/complete) also builds a VPC around it, for an account that has none.
 
+> **Status:** the worker images aren't published yet, so this Terraform is available to review but can't run workers. See [Running workers](docs/workers.md#images).
+
 ```
           temperwork.com: the control plane
                        │  assumes temperwork-cp-<name>  (with your external id)

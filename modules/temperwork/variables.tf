@@ -72,14 +72,8 @@ variable "vpc_endpoint_ids" {
   default     = []
 }
 
-variable "judge_models" {
-  description = "Judge models you host yourselves (e.g. qwen3-vl-8b): each gets a queue its model pods take grading work from. Empty: judge steps on those models call the model's API instead."
-  type        = list(string)
-  default     = []
-}
-
 variable "enroll_token_parameter" {
-  description = "The name of an SSM parameter (e.g. /temperwork/enroll-token) holding the workers' enrollment token. The workers' role may then read it, as ec2-user-data.sh does. Required when ec2_workers > 0."
+  description = "The name of an SSM parameter (e.g. /temperwork/enroll-token) holding the workers' enrollment token. The workers' role may then read it, as ec2-user-data.sh does. Required when any workers or judge_worker run on EC2 (instances > 0)."
   type        = string
   default     = ""
   validation {
@@ -88,38 +82,6 @@ variable "enroll_token_parameter" {
   }
 }
 
-variable "test_mode_access" {
-  description = <<-EOT
-    For testing temperwork itself only; leave it off. Loosens where the control-plane role may read the data bucket from:
-      off:  only through your S3 VPC endpoints (vpc_endpoint_id, vpc_endpoint_ids)
-      ip:   only from test_mode_cidrs, with no VPC endpoint needed
-      open: from anywhere, so the control-plane role can read the data itself
-  EOT
-  type        = string
-  default     = "off"
-  validation {
-    condition     = contains(["off", "ip", "open"], var.test_mode_access)
-    error_message = "test_mode_access: off, ip or open."
-  }
-}
-
-variable "test_mode_cidrs" {
-  description = "For testing only, with test_mode_access = ip: the public IP ranges temperwork's links work from."
-  type        = list(string)
-  default     = []
-}
-
-# --- EC2 workers (ec2_workers.tf) ------------------------------------------------
-
-variable "ec2_workers" {
-  description = "How many always-on EC2 GPU instances run workers (an Auto Scaling group). 0: none, run workers your own way with the worker_* outputs."
-  type        = number
-  default     = 0
-  validation {
-    condition     = var.ec2_workers >= 0 && floor(var.ec2_workers) == var.ec2_workers
-    error_message = "ec2_workers: a whole number, 0 or more."
-  }
-}
 
 variable "environment_id" {
   description = "The id you gave the environment in temperwork (STUDIO_CONNECTION_ID). Empty: name."
@@ -133,54 +95,104 @@ variable "temperwork_url" {
   default     = "https://temperwork.com"
 }
 
-variable "worker_image" {
-  description = "With ec2_workers: the worker image the pods run (a customer-prod-latest tag). Required when ec2_workers > 0."
-  type        = string
-  default     = ""
-}
-
-variable "worker_queue" {
-  description = "With ec2_workers: which queue the pods take work from: runs (inference images) or trainings (trainer images)."
-  type        = string
-  default     = "runs"
-  validation {
-    condition     = contains(["runs", "trainings"], var.worker_queue)
-    error_message = "worker_queue: runs or trainings."
-  }
-}
-
-variable "judge_worker_image" {
-  description = "With ec2_workers: also run a judge worker on each instance, from this image, on the judges queue. Empty: none."
-  type        = string
-  default     = ""
-}
-
-variable "ec2_instance_type" {
-  description = "With ec2_workers: the GPU instance type. Each GPU runs one pod."
-  type        = string
-  default     = "g6e.xlarge"
-}
-
 variable "ec2_subnet_ids" {
-  description = "With ec2_workers: the subnets the instances go in. They must reach temperwork.com, the image registry, Hugging Face and S3."
+  description = "With EC2 instances (workers or judge_worker instances > 0): the subnets they go in. They must reach temperwork.com, the image registry, Hugging Face and S3."
   type        = list(string)
   default     = []
 }
 
 variable "ec2_security_group_ids" {
-  description = "With ec2_workers: security groups for the instances. Empty: one that allows no inbound traffic and all outbound."
+  description = "With EC2 instances: their security groups. Empty: one that allows no inbound traffic and all outbound."
   type        = list(string)
   default     = []
 }
 
-variable "ec2_ami_id" {
-  description = "With ec2_workers: the AMI (Docker and the NVIDIA container toolkit). Empty: the latest AWS Deep Learning Base GPU AMI (Amazon Linux 2023)."
-  type        = string
-  default     = ""
+variable "bedrock_models" {
+  description = "Bedrock model ids (wildcards allowed) the judge workers' LLM steps may call, directly or through an inference profile. Empty: none, and no Bedrock access."
+  type        = list(string)
+  default     = ["anthropic.claude-*"]
 }
 
-variable "ec2_volume_size" {
-  description = "With ec2_workers: the root volume, in GB (models take 40 to 70 GB unless the instance has local NVMe)."
-  type        = number
-  default     = 200
+# --- workers (queues.tf, ec2_workers.tf) ----------------------------------------------
+
+variable "workers" {
+  description = <<-EOT
+    One entry per model and kind of work your workers do, keyed by a short name
+    (lowercase letters, digits, hyphens; it names the queue <name>-<key>.fifo and
+    its EC2 resources). Each gets its own queue, which temperwork sends that work to:
+      model         the model, as temperwork names it (e.g. qwen-image-edit-2511)
+      work          inference (default), training, or grading (a self-hosted judge model)
+      image         the worker image serving that model (a customer-prod-latest tag)
+      instances     always-on EC2 GPU instances running it (default 0: run it your own way)
+      instance_type default g6e.xlarge; one pod per GPU
+      volume_size   GB, default 200 (models take 40 to 70 GB unless the instance has local NVMe)
+      ami_id        default: the latest AWS Deep Learning Base GPU AMI (Amazon Linux 2023)
+  EOT
+  type = map(object({
+    model         = string
+    work          = optional(string, "inference")
+    image         = optional(string, "")
+    instances     = optional(number, 0)
+    instance_type = optional(string, "g6e.xlarge")
+    volume_size   = optional(number, 200)
+    ami_id        = optional(string, "")
+  }))
+  default = {}
+  validation {
+    condition     = alltrue([for k, w in var.workers : can(regex("^[a-z0-9][a-z0-9-]{0,19}$", k)) && k != "judges"])
+    error_message = "workers: keys are 1 to 20 lowercase letters, digits or hyphens, and not \"judges\"."
+  }
+  validation {
+    condition     = alltrue([for w in var.workers : contains(["inference", "training", "grading"], w.work)])
+    error_message = "workers: work is inference, training or grading."
+  }
+  validation {
+    condition     = alltrue([for w in var.workers : w.instances >= 0 && floor(w.instances) == w.instances && (w.instances == 0 || w.image != "")])
+    error_message = "workers: instances is a whole number, 0 or more, and needs image."
+  }
+  validation {
+    condition     = length(distinct([for w in var.workers : "${w.work == "training" ? "training" : "model"}:${w.model}"])) == length(var.workers)
+    error_message = "workers: one entry per model and kind of work (each has its own queue)."
+  }
+}
+
+variable "judge_worker" {
+  description = <<-EOT
+    The judge worker, on the judges queue (always made): judge runs, including
+    automation judges. Needs no GPU.
+      image         the judge worker image (a customer-prod-latest tag)
+      instances     always-on EC2 instances running it (default 0: run it your own way)
+      instance_type default m7i.large
+      ami_id        default: the latest Amazon Linux 2023
+  EOT
+  type = object({
+    image         = optional(string, "")
+    instances     = optional(number, 0)
+    instance_type = optional(string, "m7i.large")
+    volume_size   = optional(number, 30)
+    ami_id        = optional(string, "")
+  })
+  default = {}
+  validation {
+    condition     = var.judge_worker.instances >= 0 && floor(var.judge_worker.instances) == var.judge_worker.instances && (var.judge_worker.instances == 0 || var.judge_worker.image != "")
+    error_message = "judge_worker: instances is a whole number, 0 or more, and needs image."
+  }
+}
+
+variable "test_mode" {
+  description = <<-EOT
+    For testing temperwork itself only; leave it unset. Loosens where the control-plane role may read the data bucket from:
+      access = "off":  only through your S3 VPC endpoints (vpc_endpoint_id, vpc_endpoint_ids)
+      access = "ip":   only from cidrs, with no VPC endpoint needed
+      access = "open": from anywhere, so the control-plane role can read the data itself
+  EOT
+  type = object({
+    access = optional(string, "off")
+    cidrs  = optional(list(string), [])
+  })
+  default = {}
+  validation {
+    condition     = contains(["off", "ip", "open"], var.test_mode.access)
+    error_message = "test_mode.access: off, ip or open."
+  }
 }

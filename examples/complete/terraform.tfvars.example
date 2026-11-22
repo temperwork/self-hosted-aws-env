@@ -13,12 +13,15 @@ vpn = false
 # Zones that offer your GPU instance type (not every zone has every type).
 # zone_names = ["us-west-2b", "us-west-2c"]
 
-# judge_models = ["qwen3-vl-8b"]
-
-# Always-on EC2 GPU workers (billed while they run). Store the enrollment
-# token in SSM first: see docs/workers.md.
-# ec2_workers            = 1
-# worker_image           = "<registry>/qwen-image:customer-prod-latest"
+# Your workers: one entry per model and kind of work, each with its own
+# queue. instances > 0 runs them on always-on EC2 instances (billed while
+# they run); 0 means you run them your own way. Store the enrollment token
+# in SSM first: see docs/workers.md.
+# workers = {
+#   edit    = { model = "qwen-image-edit-2511", image = "<registry>/qwen-image:customer-prod-latest", instances = 1 }
+#   trainer = { model = "qwen-image-edit-2511", work = "training", image = "<registry>/lora-trainer:customer-prod-latest" }
+# }
+# judge_worker           = { image = "<registry>/judge-worker:customer-prod-latest", instances = 1 }
 # enroll_token_parameter = "/temperwork/enroll-token"
 
 tags = {

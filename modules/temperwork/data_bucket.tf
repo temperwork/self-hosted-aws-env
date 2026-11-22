@@ -27,12 +27,12 @@ locals {
   # The data bucket policy's test for "outside your network": not through
   # one of your VPC endpoints. A request from the internet carries no
   # aws:SourceVpce, and a negated condition on a missing key is true, so it
-  # is denied. (test_mode_access = ip tests the source IP instead.)
+  # is denied. (test_mode.access = ip tests the source IP instead.)
   outside = {
     vpce = { test = "StringNotEquals", variable = "aws:SourceVpce", values = local.endpoints }
-    ip   = { test = "NotIpAddress", variable = "aws:SourceIp", values = var.test_mode_cidrs }
+    ip   = { test = "NotIpAddress", variable = "aws:SourceIp", values = var.test_mode.cidrs }
   }
-  deny = local.outside[var.test_mode_access == "ip" ? "ip" : "vpce"]
+  deny = local.outside[var.test_mode.access == "ip" ? "ip" : "vpce"]
 }
 
 data "aws_iam_policy_document" "bucket" {
@@ -58,7 +58,7 @@ data "aws_iam_policy_document" "bucket" {
 # With an existing bucket this replaces its policy: pass the statements it
 # already has in bucket_policy_source_documents to keep them.
 resource "aws_s3_bucket_policy" "data" {
-  count  = var.test_mode_access != "open" ? 1 : 0
+  count  = var.test_mode.access != "open" ? 1 : 0
   bucket = local.bucket
   policy = data.aws_iam_policy_document.bucket.json
 }

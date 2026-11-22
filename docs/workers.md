@@ -6,15 +6,40 @@ Workers are temperwork's compiled worker, `temperwork-worker`, packaged in conta
 
 The worker images are on [GitHub Container Registry](https://github.com/tonymeng?tab=packages&repo_name=gallery). Use their `customer-prod-latest` tags: those images trust only temperwork.com's certificate root.
 
-## Three ways to run them
+## Workers, models and queues
 
-| | What runs | When to use |
+Each worker image serves **one model** and does **one kind of work**:
+
+| `work` | What it does | Its queue's id |
 |---|---|---|
-| [**`ec2_workers`**](#ec2-workers-from-the-module) | The module keeps that many always-on GPU instances (an Auto Scaling group) | The simplest setup: set a number and apply |
-| [**Your own EC2 instances**](#your-own-ec2-instances) | Instances you launch with the module's user data script; each powers off when its queue is empty | You want to pay only while there's work, or scale your own way |
-| [**Anything else**](#running-workers-another-way) | The images on ECS, Kubernetes, GPUs outside AWS... | You already run containers somewhere. Leave `ec2_workers` at 0 and use the module's outputs |
+| `inference` (default) | Runs pipeline steps on the model | `model:<model>` |
+| `training` | Trains LoRAs for the model | `training:<model>` |
+| `grading` | A self-hosted judge model, grading files for LLM judge steps | `model:<model>` |
 
-All three need the enrollment token in SSM first.
+You list them in the module's `workers` map, one entry per model and kind of work. Each entry gets its **own queue**. temperwork sends work only to the queues your environment lists (the `environment` output), so it never sends work for a model you don't run. The **judge worker**, which runs judges, is separate (`judge_worker`) and always has the judges queue.
+
+```hcl
+workers = {
+  edit    = { model = "qwen-image-edit-2511", image = "<registry>/qwen-image:customer-prod-latest", instances = 1 }
+  trainer = { model = "qwen-image-edit-2511", work = "training", image = "<registry>/lora-trainer:customer-prod-latest" }
+  vl      = { model = "qwen3-vl-8b", work = "grading", image = "<registry>/qwen-vl:customer-prod-latest" }
+}
+judge_worker = { image = "<registry>/judge-worker:customer-prod-latest", instances = 1 }
+```
+
+The key (`edit`, `trainer`, ...) names the queue (`<name>-edit.fifo`) and its EC2 resources: 1 to 20 lowercase letters, digits or hyphens.
+
+| Field | Default | |
+|---|---|---|
+| `model` | (required) | The model, as temperwork names it |
+| `work` | `inference` | `inference`, `training` or `grading` |
+| `image` | `""` | The worker image (required with `instances`) |
+| `instances` | `0` | Always-on EC2 instances running it. 0: run it your own way |
+| `instance_type` | `g6e.xlarge` | One pod per GPU |
+| `volume_size` | `200` | GB. Models take 40 to 70 GB unless the instance has local NVMe |
+| `ami_id` | latest Deep Learning Base GPU AMI (Amazon Linux 2023) | Needs Docker and the NVIDIA container toolkit |
+
+`judge_worker` takes `image`, `instances` (default 0), `instance_type` (default `m7i.large`: it needs no GPU), `volume_size` (30) and `ami_id` (default: the latest Amazon Linux 2023).
 
 ## The enrollment token
 
@@ -26,35 +51,31 @@ aws ssm put-parameter --name /temperwork/enroll-token --type SecureString --valu
 
 Then set `enroll_token_parameter = "/temperwork/enroll-token"`, so the workers' role can read it.
 
+## Three ways to run them
+
+| | What runs | When to use |
+|---|---|---|
+| [**`instances` in the module**](#ec2-workers-from-the-module) | Always-on EC2 instances the module keeps running | The simplest setup: set a number and apply |
+| [**Your own EC2 instances**](#your-own-ec2-instances) | Instances you launch with the module's user data script; each powers off when its queue is empty | You want to pay only while there's work, or scale your own way |
+| [**Anything else**](#running-workers-another-way) | The images on ECS, Kubernetes, GPUs outside AWS... | You already run containers somewhere |
+
+You can mix them: each entry decides for itself.
+
 ## EC2 workers from the module
 
-```hcl
-ec2_workers            = 1
-worker_image           = "<registry>/qwen-image:customer-prod-latest"
-enroll_token_parameter = "/temperwork/enroll-token"
-ec2_subnet_ids         = ["subnet-..."]   # examples/complete fills this in
-```
-
-Each instance runs one pod per GPU, taking work from `worker_queue` (`runs`, or `trainings` for a trainer image). With `judge_worker_image`, it also runs a judge worker on the judges queue. The workers stay up waiting for work, so **you pay for the instances while they run**, whether or not there's work. Set `ec2_workers = 0` to stop them.
+Give an entry (or `judge_worker`) `instances` > 0, set `enroll_token_parameter` and `ec2_subnet_ids` (`examples/complete` fills those in), and apply. For each, the module keeps that many instances running in an Auto Scaling group, each with one pod per GPU serving the entry's model on its queue. The workers stay up waiting for work, so **you pay for the instances while they run**, whether or not there's work. Set `instances = 0` to stop them.
 
 | Input | Default | |
 |---|---|---|
-| `ec2_workers` | `0` | How many instances |
-| `worker_image` | (required) | The pods' image |
-| `worker_queue` | `runs` | `runs` or `trainings` |
-| `judge_worker_image` | `""` | Also run a judge worker |
-| `ec2_instance_type` | `g6e.xlarge` | One pod per GPU |
 | `ec2_subnet_ids` | (required) | Must reach temperwork.com, the image registry, Hugging Face and S3 |
 | `ec2_security_group_ids` | `[]` | Empty: one with no inbound and all outbound |
-| `ec2_ami_id` | latest Deep Learning Base GPU AMI (Amazon Linux 2023) | Needs Docker and the NVIDIA container toolkit |
-| `ec2_volume_size` | `200` | GB. Models take 40 to 70 GB unless the instance has local NVMe |
 | `environment_id` | `name` | The id you gave the environment in temperwork |
 
-An image in ECR gets pull access automatically. Changing these settings updates the launch template; running instances keep the old one until they're replaced.
+An image in ECR gets pull access automatically. Changing an entry updates its launch template; running instances keep the old one until they're replaced.
 
 ## Your own EC2 instances
 
-[`modules/temperwork/ec2-user-data.sh`](../modules/temperwork/ec2-user-data.sh) (`terraform output ec2_user_data_path`) is the same script the module uses. Fill in the settings block at its top from `terraform output`, then launch a GPU instance on the **AWS Deep Learning Base GPU AMI (Amazon Linux 2023)**:
+[`modules/temperwork/ec2-user-data.sh`](../modules/temperwork/ec2-user-data.sh) (`terraform output ec2_user_data_path`) is the same script the module uses. Fill in the settings block at its top from `terraform output worker_env` and the entry's settings in `terraform output workers`, then launch a GPU instance on the **AWS Deep Learning Base GPU AMI (Amazon Linux 2023)**:
 
 ```bash
 aws ec2 run-instances \
@@ -75,9 +96,9 @@ For an image in your own ECR, set `REGISTRY_LOGIN='ecr'` in the script and attac
 
 ## Running workers another way
 
-The images aren't tied to EC2. Leave `ec2_workers` at 0 and run them however you like. Whatever runs them, a worker only needs to reach:
+The images aren't tied to EC2. Leave an entry's `instances` at 0 and run its image however you like. Whatever runs it, a worker only needs to reach:
 
-- **The queues**: it takes work from them.
+- **Its queue**: it takes work from it.
 - **The control bucket**: it reads the run records the control plane wrote and updates them.
 - **The data bucket**: it reads inputs and writes outputs.
 - **temperwork.com**: it enrolls, then holds a lease for its certificate.
@@ -86,13 +107,12 @@ The control plane only ever talks to the queues and the control bucket, so it do
 
 | Output | |
 |---|---|
-| `worker_env` | Every worker's environment variables (add `STUDIO_ENROLL_TOKEN`). A pod takes `STUDIO_QUEUE_URL` or `STUDIO_TRAIN_QUEUE_URL`; a judge worker takes `STUDIO_JUDGE_QUEUE_URL` |
-| `judge_worker_env` | A judge worker's queues for self-hosted judge models, and its Bedrock region |
+| `worker_env` | What every worker needs (add `STUDIO_ENROLL_TOKEN`) |
+| `workers` | Each entry's queue, and its pods' settings (`env`: the model, the kind of work, the queue's URL and id) |
+| `judge_worker_env` | The judge worker's settings: the judges queue, and the grading queues |
 | `worker_policy_json` | The workers' IAM policy. Attach it to the role or user your workers run as (the `<name>-tw-worker` role trusts only EC2) |
-| `queues` | Each queue's URL and ARN |
+| `queues` | Each queue's URL and ARN, by id |
 | `data_bucket_arn`, `control_bucket_arn` | The buckets |
-
-A pod serves one base model: give a queue only pods of one model.
 
 ## Troubleshooting
 

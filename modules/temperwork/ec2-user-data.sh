@@ -5,12 +5,12 @@
 #
 # On a GPU instance (the AWS Deep Learning Base GPU AMI, Amazon Linux 2023:
 # docker and the NVIDIA container toolkit) it runs the pod service, one
-# container per GPU, from a worker image (qwen-image for runs, lora-trainer
-# for trainings). With JUDGE_QUEUE_URL set it also runs a judge worker beside
-# them, which needs no GPU: from JUDGE_IMAGE (the judge worker image, with
-# temperwork's automation judges built in), else from IMAGE (no automation
-# steps). On a CPU instance with only JUDGE_QUEUE_URL it runs the judge worker
-# alone.
+# container per GPU, from a worker image serving one model (POD_MODEL) and
+# one kind of work (POD_RUNS: inference, training or grading), on that
+# model's queue. With JUDGE_QUEUE_URL set it also runs a judge worker, which
+# needs no GPU: from JUDGE_IMAGE (the judge worker image, with temperwork's
+# automation judges built in), else from IMAGE (no automation steps). With
+# only JUDGE_QUEUE_URL (a CPU instance) it runs the judge worker alone.
 #
 # Launch it:
 #   - with the module's worker instance profile (<name>-tw-worker),
@@ -28,9 +28,9 @@
 # enrollment serves its restarts.
 set -euxo pipefail
 
-# --- your settings: the module's outputs (worker_env, judge_worker_args). Each
+# --- your settings: the module's outputs (worker_env, workers, judge_worker_env). Each
 # can also come from the environment (set, even to empty, it wins): the module's
-# ec2_workers sets them that way ---
+# EC2 workers set them that way ---
 IMAGE="${IMAGE-<registry>/qwen-image:customer-prod-latest}"   # the worker image temperwork gives you access to
 REGISTRY_LOGIN="${REGISTRY_LOGIN-none}"          # ecr: log in to IMAGE's ECR registry with the profile; none: a public registry
 STUDIO_URL="${STUDIO_URL-https://temperwork.com}"
@@ -38,9 +38,15 @@ STUDIO_CONNECTION_ID="${STUDIO_CONNECTION_ID-<the id you gave the environment>}"
 STUDIO_CONTROL_URI="${STUDIO_CONTROL_URI-<worker_env STUDIO_CONTROL_URI>}"   # in the control bucket
 STUDIO_LORA_URI="${STUDIO_LORA_URI-<worker_env STUDIO_LORA_URI>}"         # in the data bucket
 AWS_REGION="${AWS_REGION-us-west-2}"
-QUEUE_URL="${QUEUE_URL-<worker_env STUDIO_QUEUE_URL>}"   # the pod service's runs queue ('' : none)
-TRAIN_QUEUE_URL="${TRAIN_QUEUE_URL-}"             # a trainer image's: worker_env STUDIO_TRAIN_QUEUE_URL
+POD_MODEL="${POD_MODEL-}"                 # the model the image serves (workers.<key>.model)
+POD_RUNS="${POD_RUNS-}"                   # inference, training or grading (workers.<key>.work); empty: the image decides
+QUEUE_URL="${QUEUE_URL-}"                 # inference: the model's queue (workers.<key>.queue_url)
+QUEUE_ID="${QUEUE_ID-}"                   # inference: its id, model:<model> (workers.<key>.queue_id)
+TRAIN_QUEUE_URL="${TRAIN_QUEUE_URL-}"     # training: the model's trainings queue
+TRAIN_QUEUE_ID="${TRAIN_QUEUE_ID-}"       # training: its id, training:<model>
+MODEL_QUEUE_URL="${MODEL_QUEUE_URL-}"     # inference or grading on a model's own queue
 JUDGE_QUEUE_URL="${JUDGE_QUEUE_URL-}"             # also run a judge worker here: judge_worker_args' --queue-url
+JUDGE_QUEUES="${JUDGE_QUEUES-}"           # the judge worker's self-hosted judge models' queues (judge_worker_env STUDIO_QUEUES)
 JUDGE_IMAGE="${JUDGE_IMAGE-}"                 # the judge worker image (<registry>/judge-worker:customer-prod-latest); empty: IMAGE's worker, without automation judges
 TOKEN_PARAM="${TOKEN_PARAM-/temperwork/enroll-token}"   # the SSM parameter (SecureString) holding the enrollment token
 ROOT_SHA256="${ROOT_SHA256-}"                 # only for an image not pinned to temperwork.com's root (the customer images are): that root's fingerprint
@@ -70,7 +76,7 @@ mkdir -p "$WS"
 
 command -v docker >/dev/null || dnf install -y docker
 systemctl enable --now docker
-pods=0; { [ -n "$QUEUE_URL" ] || [ -n "$TRAIN_QUEUE_URL" ]; } && pods=1
+pods=0; { [ -n "$QUEUE_URL" ] || [ -n "$TRAIN_QUEUE_URL" ] || [ -n "$MODEL_QUEUE_URL" ]; } && pods=1
 images=()   # what this instance runs: the pods' image, and the judge worker's
 { [ "$pods" = 1 ] || { [ -n "$JUDGE_QUEUE_URL" ] && [ -z "$JUDGE_IMAGE" ]; }; } && images+=("$IMAGE")
 [ -n "$JUDGE_QUEUE_URL" ] && [ -n "$JUDGE_IMAGE" ] && images+=("$JUDGE_IMAGE")
@@ -106,6 +112,8 @@ pod() {   # name, docker args for its device...
   # --ipc=host: a training's data loader outgrows docker's 64 MB /dev/shm.
   docker run "${common[@]}" --restart on-failure --name "$name" --hostname "$name" "$@" --ipc=host \
     -v "$WS:/workspace" -e STUDIO_QUEUE_URL="$QUEUE_URL" -e STUDIO_TRAIN_QUEUE_URL="$TRAIN_QUEUE_URL" \
+    -e STUDIO_MODEL_QUEUE_URL="$MODEL_QUEUE_URL" -e STUDIO_QUEUE_ID="$QUEUE_ID" -e STUDIO_TRAIN_QUEUE_ID="$TRAIN_QUEUE_ID" \
+    -e STUDIO_POD_MODEL="$POD_MODEL" -e STUDIO_POD_RUNS="$POD_RUNS" \
     "${idle_pod[@]}" -e STUDIO_POD_DRAIN_S=90 -e STUDIO_POD_INSTANCE_TYPE="$ITYPE" \
     -e STUDIO_POD_PLATFORM=ec2 "$IMAGE"
   names+=("$name")
@@ -125,7 +133,7 @@ if [ -n "$JUDGE_QUEUE_URL" ]; then
   # automation steps fail.
   mkdir -p "$WS/judge"
   docker rm -f judge 2>/dev/null || true
-  judge=(-v "$WS/judge:/state" -e STUDIO_JUDGE_STATE=/state -e STUDIO_JUDGE_QUEUE_URL="$JUDGE_QUEUE_URL"
+  judge=(-v "$WS/judge:/state" -e STUDIO_JUDGE_STATE=/state -e STUDIO_JUDGE_QUEUE_URL="$JUDGE_QUEUE_URL" -e STUDIO_QUEUES="$JUDGE_QUEUES"
          "${idle_judge[@]}")
   if [ -n "$JUDGE_IMAGE" ]; then
     chown 65532:65532 "$WS/judge"
@@ -136,7 +144,7 @@ if [ -n "$JUDGE_QUEUE_URL" ]; then
   fi
   names+=(judge)
 fi
-[ "${#names[@]}" -gt 0 ] || { echo "[workers] nothing to run: set QUEUE_URL, TRAIN_QUEUE_URL or JUDGE_QUEUE_URL"; exit 1; }
+[ "${#names[@]}" -gt 0 ] || { echo "[workers] nothing to run: set QUEUE_URL, TRAIN_QUEUE_URL, MODEL_QUEUE_URL or JUDGE_QUEUE_URL"; exit 1; }
 
 # Every worker has left (no work on its queue, or its certificate revoked): the instance goes too.
 for n in "${names[@]}"; do docker wait "$n" || true; done

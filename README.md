@@ -14,11 +14,11 @@ This repository is a Terraform module, [`modules/temperwork`](modules/temperwork
                        │  └─ signs GET links            → <name>-data, usable only through your VPC endpoint
                        ▼
  ┌──────────── your AWS account: the data plane ──────────────────────┐
- │  SQS FIFO: <name>-runs, -trainings, -judges, -model-*              │
+ │  SQS FIFO: <name>-<worker>, one per model and work; <name>-judges  │
  │  S3: <name>-data      datasets, outputs, LoRAs (control plane:     │
  │                       no writes, no reads from outside your VPC)   │
  │  S3: <name>-control   the control plane's records (.studio/)       │
- │  EC2: <name>-tw-workers (optional), role <name>-tw-worker          │
+ │  EC2: <name>-tw-<key> (optional), role <name>-tw-worker            │
  └────────────────────────────────────────────────────────────────────┘
         ▲
         └── your people's browsers open files through your S3 VPC endpoint
@@ -99,9 +99,7 @@ Copy the values into the Add environment form:
 | Form field | Output |
 |---|---|
 | Region | `environment.region` |
-| Runs queue URL | `environment.queue_url` |
-| Judges queue URL | `environment.judge_queue_url` |
-| Trainings queue URL | `environment.train_queue_url` |
+| Queues | `environment.queues`: each queue's id, the work and model it's for, and its URL. temperwork uses only these |
 | Data root | `environment.data_root` |
 | Control URI | `environment.control_uri` |
 | Role ARN | `environment.credentials.role_arn` |
@@ -113,8 +111,8 @@ Save the form, then click **Test** on the environment's card. Test checks each q
 
 On the environment's card, choose **⋯ → Make an enrollment token** and store it in SSM ([docs/workers.md](docs/workers.md#the-enrollment-token)). Then either:
 
-- **let the module run them**: set `ec2_workers` (with `worker_image` and `enroll_token_parameter`) and apply. It keeps that many always-on EC2 GPU instances; or
-- **run them yourself**: on EC2 with [`ec2-user-data.sh`](modules/temperwork/ec2-user-data.sh), or any other way, with the module's outputs (`worker_env`, `worker_policy_json`, `queues`).
+- **let the module run them**: give a `workers` entry (or `judge_worker`) `instances` > 0, set `enroll_token_parameter`, and apply. It keeps that many always-on EC2 instances; or
+- **run them yourself**: on EC2 with [`ec2-user-data.sh`](modules/temperwork/ec2-user-data.sh), or any other way, with the module's outputs (`worker_env`, `workers`, `worker_policy_json`).
 
 [docs/workers.md](docs/workers.md) covers all three.
 
@@ -132,10 +130,9 @@ The data bucket also needs a CORS rule for temperwork's origin (`temperwork_orig
 
 | Resource | Name | Purpose |
 |---|---|---|
-| SQS FIFO queue | `<name>-runs.fifo` | Runs, for the pod service |
-| SQS FIFO queue | `<name>-trainings.fifo` | Trainings, for trainer pods |
-| SQS FIFO queue | `<name>-judges.fifo` | Judge runs, for judge workers |
-| SQS FIFO queue | `<name>-model-<model>.fifo` | One per entry in `judge_models`: grading work for the model pods you host |
+| SQS FIFO queue | `<name>-<key>.fifo` | One per `workers` entry: a model's inference, training or grading work |
+| SQS FIFO queue | `<name>-judges.fifo` | Judge runs, for the judge worker |
+| Launch template and Auto Scaling group | `<name>-tw-<key>` | For each `workers` entry (and `judge_worker`) with `instances` > 0 |
 | S3 bucket | `<name>-data` (or `bucket`) | Your datasets, and what your workers write: outputs (`<prefix>datasets/`) and LoRAs (`<prefix>loras/`) |
 | S3 bucket policy | on the data bucket | Denies the control-plane role any read that doesn't come through your VPC endpoint |
 | S3 CORS rule | on the data bucket | Lets temperwork's page `GET` from the bucket |
@@ -149,7 +146,7 @@ All queues are encrypted at rest with SQS-managed keys.
 
 ### Cost
 
-The environment itself costs almost nothing while it's idle: SQS, S3 and IAM are billed by use. The S3 gateway endpoint is free. With `vpn = true`, the Client VPN and the interface endpoint are billed by the hour. In us-west-2 that is about $0.10/h per subnet association, $0.05/h per connection and $0.01/h for the interface endpoint, so turn the VPN off when no one needs it. GPU instances are billed by AWS as usual: `ec2_workers` instances run (and bill) until you set it back to 0, while instances you launch with the user data script power off when their queue is empty.
+The environment itself costs almost nothing while it's idle: SQS, S3 and IAM are billed by use. The S3 gateway endpoint is free. With `vpn = true`, the Client VPN and the interface endpoint are billed by the hour. In us-west-2 that is about $0.10/h per subnet association, $0.05/h per connection and $0.01/h for the interface endpoint, so turn the VPN off when no one needs it. GPU instances are billed by AWS as usual: instances the module runs bill until you set their `instances` back to 0, while instances you launch with the user data script power off when their queue is empty.
 
 ## Security model
 
@@ -195,14 +192,16 @@ The module has no `provider` block. It uses your `aws` provider and its region. 
 | `prefix` | `"temperwork/"` | Where in the data bucket workers write outputs and LoRAs. |
 | `temperwork_origins` | `["https://temperwork.com"]` | Origins allowed by the data bucket's CORS rule. |
 | `vpc_endpoint_id`, `vpc_endpoint_ids` | (one required) | Your S3 VPC endpoints: the only way temperwork's links to your data work. |
-| `judge_models` | `[]` | Self-hosted judge models. Each gets a queue. |
-| `enroll_token_parameter` | `""` | An SSM parameter holding the enrollment token. The worker role can then read it. Required with `ec2_workers`. |
-| `ec2_workers` | `0` | How many always-on EC2 GPU instances run workers. 0: none. Its other inputs (`worker_image`, `worker_queue`, `judge_worker_image`, `ec2_instance_type`, `ec2_subnet_ids`, ...) are in [docs/workers.md](docs/workers.md#ec2-workers-from-the-module). |
+| `enroll_token_parameter` | `""` | An SSM parameter holding the enrollment token. The worker role can then read it. Required when any worker runs on EC2. |
+| `workers` | `{}` | One entry per model and kind of work (`model`, `work`, `image`, `instances`, ...), each with its own queue. See [docs/workers.md](docs/workers.md#workers-models-and-queues). |
+| `judge_worker` | `{}` | The judge worker's `image` and `instances`. |
+| `ec2_subnet_ids`, `ec2_security_group_ids` | `[]` | Where EC2 workers go. |
+| `bedrock_models` | `["anthropic.claude-*"]` | Bedrock models the judge workers' LLM steps may call. Empty: no Bedrock access. |
 | `environment_id` | `name` | The id you gave the environment in temperwork. |
 
 ### Outputs
 
-`environment`, `worker_env`, `worker_policy_json`, `queues`, `bucket`, `data_bucket_arn`, `control_bucket`, `control_bucket_arn`, `control_uri`, `control_plane_role_arn`, `worker_role_arn`, `worker_role_name`, `worker_instance_profile`, `ec2_user_data_path`, `ec2_autoscaling_group`, `judge_worker_args`, `judge_worker_env`, `judge_model_env`. Each output's description is in [`outputs.tf`](modules/temperwork/outputs.tf).
+`environment`, `worker_env`, `workers`, `judge_worker_env`, `judge_worker_args`, `worker_policy_json`, `queues`, `ec2_autoscaling_groups`, `bucket`, `data_bucket_arn`, `control_bucket`, `control_bucket_arn`, `control_uri`, `control_plane_role_arn`, `worker_role_arn`, `worker_role_name`, `worker_instance_profile`, `ec2_user_data_path`. Each output's description is in [`outputs.tf`](modules/temperwork/outputs.tf).
 
 ## Updating and removing
 

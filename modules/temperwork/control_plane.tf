@@ -26,12 +26,12 @@ resource "aws_iam_role" "temperwork" {
 
   lifecycle {
     precondition {
-      condition     = var.test_mode_access != "off" || length(local.endpoints) > 0
+      condition     = var.test_mode.access != "off" || length(local.endpoints) > 0
       error_message = "vpc_endpoint_id (or vpc_endpoint_ids) is required: your S3 VPC endpoint, the only way temperwork's links to your data work."
     }
     precondition {
-      condition     = var.test_mode_access != "ip" || length(var.test_mode_cidrs) > 0
-      error_message = "test_mode_access = ip needs test_mode_cidrs."
+      condition     = var.test_mode.access != "ip" || length(var.test_mode.cidrs) > 0
+      error_message = "test_mode.access = ip needs test_mode.cidrs."
     }
     precondition {
       condition     = var.control_bucket == "" || var.control_bucket != var.bucket
@@ -44,16 +44,16 @@ data "aws_iam_policy_document" "temperwork" {
   statement {
     sid       = "Queues"
     actions   = ["sqs:SendMessage", "sqs:GetQueueAttributes", "sqs:PurgeQueue"]
-    resources = [aws_sqs_queue.runs.arn, aws_sqs_queue.trainings.arn, aws_sqs_queue.judges.arn]
+    resources = concat(local.sent_by_temperwork, [aws_sqs_queue.judges.arn])
   }
-  # The judge models' queues: only your judge workers send to them, but the
-  # temperwork shows how much work waits there.
+  # The grading queues: only your judge workers send to them, but temperwork
+  # shows how much work waits there.
   dynamic "statement" {
-    for_each = length(var.judge_models) > 0 ? [1] : []
+    for_each = length(local.grading) > 0 ? [1] : []
     content {
-      sid       = "SeeJudgeModelQueues"
+      sid       = "SeeGradingQueues"
       actions   = ["sqs:GetQueueAttributes"]
-      resources = [for q in aws_sqs_queue.models : q.arn]
+      resources = [for q in local.grading : q.arn]
     }
   }
   statement {

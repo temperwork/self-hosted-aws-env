@@ -9,7 +9,7 @@
 #   queues.tf          the SQS FIFO queues temperwork sends work to
 #   control_plane.tf   the role temperwork assumes in your account
 #   workers.tf         the workers' permissions, role and instance profile
-#   ec2_workers.tf     optional always-on EC2 workers (ec2_workers > 0)
+#   ec2_workers.tf     optional always-on EC2 workers (instances > 0)
 
 data "aws_region" "current" {}
 data "aws_partition" "current" {}

@@ -19,36 +19,42 @@ resource "aws_iam_role" "worker" {
 
 data "aws_iam_policy_document" "worker" {
   statement {
-    sid     = "Queues"
-    actions = ["sqs:ReceiveMessage", "sqs:DeleteMessage", "sqs:ChangeMessageVisibility", "sqs:GetQueueAttributes"]
-    resources = concat([aws_sqs_queue.runs.arn, aws_sqs_queue.trainings.arn, aws_sqs_queue.judges.arn],
-    [for q in aws_sqs_queue.models : q.arn])
+    sid       = "Queues"
+    actions   = ["sqs:ReceiveMessage", "sqs:DeleteMessage", "sqs:ChangeMessageVisibility", "sqs:GetQueueAttributes"]
+    resources = concat([for q in aws_sqs_queue.workers : q.arn], [aws_sqs_queue.judges.arn])
   }
-  # Judge workers put grading chunks on the judge models' queues.
+  # Judge workers put grade chunks on the grading queues (a self-hosted judge
+  # model's), and that model's pods take them.
   dynamic "statement" {
-    for_each = length(var.judge_models) > 0 ? [1] : []
+    for_each = length(local.grading) > 0 ? [1] : []
     content {
-      sid       = "JudgeModelQueues"
+      sid       = "GradingQueues"
       actions   = ["sqs:SendMessage"]
-      resources = [for q in aws_sqs_queue.models : q.arn]
+      resources = [for q in local.grading : q.arn]
     }
   }
-  # Judge workers' LLM steps call Claude in Bedrock, in this account: the
-  # Messages API, then InvokeModel on the model or a US or global inference
-  # profile (which may serve it from another region).
-  statement {
-    sid     = "LlmJudges"
-    actions = ["bedrock:InvokeModel"]
-    resources = [
-      "arn:${local.partition}:bedrock:*::foundation-model/anthropic.*",
-      "arn:${local.partition}:bedrock:::foundation-model/anthropic.*",
-      "arn:${local.partition}:bedrock:*:*:inference-profile/*anthropic.*",
-    ]
+  # Judge workers' LLM steps call the bedrock_models in Bedrock, in this
+  # account: the Messages API, then InvokeModel on the model or a US or global
+  # inference profile (which may serve it from another region).
+  dynamic "statement" {
+    for_each = length(var.bedrock_models) > 0 ? [1] : []
+    content {
+      sid     = "LlmJudges"
+      actions = ["bedrock:InvokeModel"]
+      resources = flatten([for m in var.bedrock_models : [
+        "arn:${local.partition}:bedrock:*::foundation-model/${m}",
+        "arn:${local.partition}:bedrock:::foundation-model/${m}", # what a global inference profile calls
+        "arn:${local.partition}:bedrock:*:*:inference-profile/*${m}",
+      ]])
+    }
   }
-  statement {
-    sid       = "LlmJudgesMessages"
-    actions   = ["bedrock-mantle:CreateInference"]
-    resources = ["*"]
+  dynamic "statement" {
+    for_each = length(var.bedrock_models) > 0 ? [1] : []
+    content {
+      sid       = "LlmJudgesMessages"
+      actions   = ["bedrock-mantle:CreateInference"]
+      resources = ["*"]
+    }
   }
   statement {
     sid       = "Objects"

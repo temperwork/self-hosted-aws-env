@@ -50,12 +50,6 @@ variable "vpn" {
   default     = false
 }
 
-variable "judge_models" {
-  description = "Judge models you host yourselves (e.g. [\"qwen3-vl-8b\"])."
-  type        = list(string)
-  default     = []
-}
-
 variable "enroll_token_parameter" {
   description = "The SSM parameter holding the workers' enrollment token (e.g. /temperwork/enroll-token), or empty."
   type        = string
@@ -68,38 +62,26 @@ variable "tags" {
   default     = {}
 }
 
-variable "ec2_workers" {
-  description = "How many always-on EC2 GPU instances run workers. 0: none."
-  type        = number
-  default     = 0
-}
-
 variable "environment_id" {
   description = "The id you gave the environment in temperwork. Empty: name."
   type        = string
   default     = ""
 }
 
-variable "worker_image" {
-  description = "With ec2_workers: the worker image (a customer-prod-latest tag)."
-  type        = string
-  default     = ""
+variable "workers" {
+  description = "One entry per model and kind of work, each with its own queue and, with instances > 0, its own always-on EC2 instances. See docs/workers.md."
+  type        = any
+  default     = {}
 }
 
-variable "worker_queue" {
-  description = "With ec2_workers: runs (inference images) or trainings (trainer images)."
-  type        = string
-  default     = "runs"
+variable "judge_worker" {
+  description = "The judge worker: image, and instances to run it on EC2. See docs/workers.md."
+  type        = any
+  default     = {}
 }
 
-variable "judge_worker_image" {
-  description = "With ec2_workers: also run a judge worker on each instance from this image. Empty: none."
-  type        = string
-  default     = ""
-}
-
-variable "ec2_instance_type" {
-  description = "With ec2_workers: the GPU instance type."
-  type        = string
-  default     = "g6e.xlarge"
+variable "bedrock_models" {
+  description = "Bedrock model ids (wildcards allowed) the judge workers' LLM steps may call."
+  type        = list(string)
+  default     = ["anthropic.claude-*"]
 }

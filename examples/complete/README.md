@@ -64,9 +64,9 @@ The Client VPN is billed per subnet association-hour and per connection-hour. Th
 | `zone_names` | `[]` | Exactly which zones get a subnet. |
 | `vpn` | `false` | Create the interface endpoint and the Client VPN. |
 | `vpn_client_cidr` | `10.200.0.0/22` | Addresses for VPN clients: a /22 or larger, outside `cidr`. |
-| `judge_models`, `enroll_token_parameter`, `temperwork_origins` | | Passed to the module. |
+| `workers`, `judge_worker`, `bedrock_models`, `enroll_token_parameter`, `environment_id`, `temperwork_origins` | | Passed to the module (workers on EC2 go in this VPC's subnets). |
 | `tags` | `{}` | Tags on everything. |
 
 ## Outputs
 
-The module's (`environment`, `worker_env`, `judge_worker_args`, `judge_worker_env`, `bucket`, `control_bucket`, `worker_instance_profile`, `worker_role_arn`, `ec2_user_data_path`), plus `subnet_ids`, `security_group_id`, `browser_endpoint` and `vpn_client_config` (sensitive).
+The module's (`environment`, `worker_env`, `workers`, `judge_worker_args`, `judge_worker_env`, `worker_policy_json`, `queues`, `ec2_autoscaling_groups`, `bucket`, `control_bucket`, `worker_instance_profile`, `worker_role_arn`, `ec2_user_data_path`), plus `subnet_ids`, `security_group_id`, `browser_endpoint` and `vpn_client_config` (sensitive).

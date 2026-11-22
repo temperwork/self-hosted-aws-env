@@ -40,15 +40,12 @@ module "temperwork" {
     var.vpn ? aws_vpc_endpoint.s3_interface[0].id : "",
   ])
 
-  judge_models           = var.judge_models
   enroll_token_parameter = var.enroll_token_parameter
 
-  # EC2 workers in this VPC's subnets (ec2_workers > 0).
-  ec2_workers        = var.ec2_workers
-  environment_id     = var.environment_id
-  worker_image       = var.worker_image
-  worker_queue       = var.worker_queue
-  judge_worker_image = var.judge_worker_image
-  ec2_instance_type  = var.ec2_instance_type
-  ec2_subnet_ids     = aws_subnet.public[*].id
+  # Workers, and the subnets of this VPC for those running on EC2.
+  workers        = var.workers
+  judge_worker   = var.judge_worker
+  bedrock_models = var.bedrock_models
+  environment_id = var.environment_id
+  ec2_subnet_ids = aws_subnet.public[*].id
 }

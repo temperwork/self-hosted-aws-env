@@ -47,11 +47,16 @@ output "worker_policy_json" {
 }
 
 output "queues" {
-  description = "Every queue's URL and ARN."
+  description = "Every queue's URL and ARN, by id."
   value       = module.temperwork.queues
 }
 
-output "ec2_autoscaling_group" {
-  description = "With ec2_workers: the Auto Scaling group running them."
-  value       = module.temperwork.ec2_autoscaling_group
+output "workers" {
+  description = "Each workers entry's queue and its pods' settings."
+  value       = module.temperwork.workers
+}
+
+output "ec2_autoscaling_groups" {
+  description = "The Auto Scaling groups running EC2 workers."
+  value       = module.temperwork.ec2_autoscaling_groups
 }

@@ -24,14 +24,15 @@ provider "aws" {
   }
 }
 
-module "environment" {
-  source          = "../../modules/environment"
+module "temperwork" {
+  source          = "../../modules/temperwork"
   name            = var.name
   studio_role_arn = var.studio_role_arn
   external_id     = var.external_id
   studio_origins  = var.studio_origins
 
   bucket                         = var.bucket
+  control_bucket                 = var.control_bucket
   bucket_policy_source_documents = var.existing_bucket_policy_file != "" ? [file(var.existing_bucket_policy_file)] : []
   prefix                         = var.prefix
 

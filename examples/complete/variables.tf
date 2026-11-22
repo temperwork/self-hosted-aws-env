@@ -27,7 +27,7 @@ variable "studio_origins" {
 }
 
 variable "cidr" {
-  description = "The VPC's address range."
+  description = "The VPC's address range. Must not overlap vpn_client_cidr."
   type        = string
   default     = "10.42.0.0/16"
 }
@@ -36,6 +36,12 @@ variable "zone_names" {
   description = "Availability zones for the subnets (pick ones that offer your GPU type); empty: the region's first two."
   type        = list(string)
   default     = []
+}
+
+variable "vpn_client_cidr" {
+  description = "Addresses the Client VPN gives its clients: a /22 or larger, outside cidr."
+  type        = string
+  default     = "10.200.0.0/22"
 }
 
 variable "vpn" {

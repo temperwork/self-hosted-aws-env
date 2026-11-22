@@ -1,15 +1,33 @@
-# The example network (`modules/network`)
+# `examples/complete`
 
-For an account with no network for this yet. `examples/complete` uses it.
+Everything the temperwork module needs, for an account that has none of it yet: a VPC with S3 endpoints (`network.tf`), an optional AWS Client VPN for browsers outside AWS (`vpn.tf`), and the module itself (`main.tf`).
 
-## What it creates
+If you already have a VPC, use [`examples/existing-network`](../existing-network) instead, or call [`modules/temperwork`](../../modules/temperwork) from your own Terraform.
+
+## Usage
+
+```bash
+cp terraform.tfvars.example terraform.tfvars   # then fill it in
+```
+
+```bash
+terraform init
+```
+
+```bash
+terraform apply
+```
+
+Then follow the [quick start](../../README.md#4-finish-adding-the-environment-in-the-studio) from step 4.
+
+## The network (`network.tf`)
 
 - **VPC** (`cidr`, default `10.42.0.0/16`) with DNS support and hostnames turned on.
-- **Public subnets** in `zones` availability zones (default 2), or in exactly the zones listed in `zone_names`. Pick zones that offer your GPU instance type, because not every zone has every type.
+- **Public subnets** in the region's first two availability zones, or in exactly the zones listed in `zone_names`. Pick zones that offer your GPU instance type, because not every zone has every type.
 - **Internet gateway**, and **no NAT**. Workers get public IPs and reach temperwork.com, the image registry and Hugging Face directly. That keeps the network cheap. Workers accept no inbound traffic, because the default security group allows no ingress from outside the VPC.
-- **S3 gateway endpoint** (free). Workers' S3 traffic and in-VPC browsers use it. Its id goes to the environment's `vpc_endpoint_ids`.
+- **S3 gateway endpoint** (free). Workers' S3 traffic and in-VPC browsers use it. Its id goes to the module's `vpc_endpoint_ids`.
 
-## With `vpn = true`
+## The VPN (`vpn.tf`, with `vpn = true`)
 
 - **S3 interface endpoint** in one subnet, with private DNS. Inside the VPC, and over the VPN, the bucket's normal hostname resolves to the endpoint.
 - **AWS Client VPN endpoint**: mutual-TLS certificate authentication, a split tunnel (only the VPC's range goes through the VPN), and the VPC's resolver as its DNS. It is associated with one subnet.
@@ -27,7 +45,7 @@ Import `studio.ovpn` into the [AWS VPN Client](https://aws.amazon.com/vpn/client
 
 The generated certificates are fine for trying the setup. For production:
 
-- Keep your CA **outside** Terraform state, issue a client certificate per person, and import the CA's certificate into ACM yourself. Then point `root_certificate_chain_arn` at it, by forking the module or managing the Client VPN endpoint yourself.
+- Keep your CA **outside** Terraform state, issue a client certificate per person, and import the CA's certificate into ACM yourself. Then point the Client VPN's `root_certificate_chain_arn` at it in `vpn.tf`.
 - Or switch the Client VPN to SAML / IAM Identity Center authentication.
 - Turn on connection logging.
 
@@ -40,12 +58,15 @@ The Client VPN is billed per subnet association-hour and per connection-hour. Th
 | Name | Default | Description |
 |---|---|---|
 | `name` | (required) | Names everything. |
+| `region` | `us-west-2` | The AWS region. |
+| `studio_role_arn`, `external_id` | (required) | From the studio's Add environment form. |
 | `cidr` | `10.42.0.0/16` | VPC range. Must not overlap `vpn_client_cidr`. |
-| `zones` | `2` | How many zones get a subnet. |
 | `zone_names` | `[]` | Exactly which zones get a subnet. |
 | `vpn` | `false` | Create the interface endpoint and the Client VPN. |
 | `vpn_client_cidr` | `10.200.0.0/22` | Addresses for VPN clients: a /22 or larger, outside `cidr`. |
+| `judge_models`, `enroll_token_parameter`, `studio_origins` | | Passed to the module. |
+| `tags` | `{}` | Tags on everything. |
 
 ## Outputs
 
-`vpc_id`, `subnet_ids`, `default_security_group_id`, `s3_endpoint_ids`, `browser_endpoint`, `vpn_endpoint_id`, `vpn_client_config` (sensitive).
+The module's (`environment`, `worker_env`, `judge_worker_args`, `judge_worker_env`, `bucket`, `control_bucket`, `worker_instance_profile`, `worker_role_arn`, `ec2_user_data_path`), plus `subnet_ids`, `security_group_id`, `browser_endpoint` and `vpn_client_config` (sensitive).

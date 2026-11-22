@@ -21,6 +21,10 @@ vpc_endpoint_ids = ["vpce-0123456789abcdef0"]
 # bucket                      = "acme-ml-data"
 # existing_bucket_policy_file = "existing-policy.json"
 
+# The studio's records go in a separate bucket, <name>-control by default.
+# To use one you already have (empty, and not your data's bucket):
+# control_bucket = "acme-temperwork-control"
+
 # EKS Pod Identity:
 # worker_principals = ["ec2.amazonaws.com", "ecs-tasks.amazonaws.com", "pods.eks.amazonaws.com"]
 

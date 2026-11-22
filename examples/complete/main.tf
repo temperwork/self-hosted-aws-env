@@ -1,5 +1,6 @@
-# A new VPC and a temperwork environment in it: the quickest way to start in
-# an account that has no network for this yet. See the README.
+# Everything the temperwork module needs, in an account that has none of it
+# yet: a VPC with an S3 endpoint (network.tf), optionally a Client VPN for
+# browsers outside AWS (vpn.tf), and the module itself. See README.md.
 
 terraform {
   required_version = ">= 1.5"
@@ -24,25 +25,21 @@ provider "aws" {
   }
 }
 
-module "network" {
-  source     = "../../modules/network"
-  name       = var.name
-  cidr       = var.cidr
-  zone_names = var.zone_names
-  vpn        = var.vpn
-}
-
-module "environment" {
-  source          = "../../modules/environment"
+module "temperwork" {
+  source          = "../../modules/temperwork"
   name            = var.name
   studio_role_arn = var.studio_role_arn
   external_id     = var.external_id
   studio_origins  = var.studio_origins
 
-  # Your data is readable through the VPC's S3 endpoints only: from
-  # instances in the VPC and, with vpn = true, from browsers on the VPN.
-  browser_access   = "vpce"
-  vpc_endpoint_ids = module.network.s3_endpoint_ids
+  # Your data is readable by the studio's links only through this VPC's S3
+  # endpoints: from instances in the VPC and, with vpn = true, from
+  # browsers on the VPN.
+  browser_access = "vpce"
+  vpc_endpoint_ids = compact([
+    aws_vpc_endpoint.s3_gateway.id,
+    var.vpn ? aws_vpc_endpoint.s3_interface[0].id : "",
+  ])
 
   judge_models           = var.judge_models
   enroll_token_parameter = var.enroll_token_parameter

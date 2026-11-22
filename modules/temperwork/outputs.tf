@@ -7,6 +7,7 @@ output "environment" {
     judge_queue_url = aws_sqs_queue.judges.url
     train_queue_url = aws_sqs_queue.trainings.url
     data_root       = "s3://${local.bucket}/${var.prefix}"
+    control_uri     = local.control_uri
     region          = local.region
     credentials     = { kind = "role", role_arn = aws_iam_role.studio.arn }
   }
@@ -15,7 +16,8 @@ output "environment" {
 output "worker_env" {
   description = "The pod service's environment. Add STUDIO_CONNECTION_ID (the id you gave the environment), STUDIO_URL and STUDIO_ENROLL_TOKEN (the environment's card: Make an enrollment token)."
   value = {
-    STUDIO_CONTROL_URI     = "s3://${local.bucket}/${local.control}"
+    STUDIO_CONTROL_URI     = local.control_uri
+    STUDIO_LORA_URI        = "s3://${local.bucket}/${var.prefix}loras/"
     STUDIO_QUEUE_URL       = aws_sqs_queue.runs.url
     STUDIO_TRAIN_QUEUE_URL = aws_sqs_queue.trainings.url
     AWS_REGION             = local.region
@@ -27,9 +29,14 @@ output "bucket" {
   value       = local.bucket
 }
 
+output "control_bucket" {
+  description = "The control bucket: the studio's records, shared with your workers."
+  value       = local.control
+}
+
 output "control_uri" {
-  description = "The control prefix the studio and your workers share."
-  value       = "s3://${local.bucket}/${local.control}"
+  description = "Where in the control bucket the records go (STUDIO_CONTROL_URI)."
+  value       = local.control_uri
 }
 
 output "browser_access" {
@@ -57,9 +64,14 @@ output "worker_instance_profile" {
   value       = aws_iam_instance_profile.worker.name
 }
 
+output "ec2_user_data_path" {
+  description = "The EC2 user data script that runs workers (fill in its settings block)."
+  value       = "${path.module}/ec2-user-data.sh"
+}
+
 output "judge_worker_args" {
   description = "The judge worker's command line. Replace <id> with the environment's id."
-  value       = "temperwork-worker judge-worker --control s3://${local.bucket}/${local.control} --connection <id> --queue-url ${aws_sqs_queue.judges.url}"
+  value       = "temperwork-worker judge-worker --control ${local.control_uri} --connection <id> --queue-url ${aws_sqs_queue.judges.url}"
 }
 
 output "judge_worker_env" {

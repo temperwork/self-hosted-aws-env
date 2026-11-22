@@ -32,6 +32,12 @@ variable "bucket" {
   default     = ""
 }
 
+variable "control_bucket" {
+  description = "An existing, empty bucket for the studio's records (not your data's bucket), or empty to make <name>-control."
+  type        = string
+  default     = ""
+}
+
 variable "existing_bucket_policy_file" {
   description = "With an existing bucket that has a policy: a file holding that policy's JSON, so its statements are kept (the module writes the whole policy)."
   type        = string
@@ -39,7 +45,7 @@ variable "existing_bucket_policy_file" {
 }
 
 variable "prefix" {
-  description = "Where in the bucket the studio's outputs and control records go."
+  description = "Where in the data bucket your workers write outputs and LoRAs."
   type        = string
   default     = "studio/"
 }

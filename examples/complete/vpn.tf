@@ -1,77 +1,13 @@
-# The network the environment module expects, for an account that has none
-# yet. See docs/network.md.
-#
-#   - a VPC with public subnets and an internet gateway, no NAT: workers get
-#     public IPs and reach temperwork.com (their leases), the image registry
-#     and Hugging Face directly
-#   - an S3 gateway endpoint (free): workers' and in-VPC browsers' S3
-#     traffic, and an endpoint browser_access = vpce accepts
-#   - with vpn = true, the way in for your people's browsers outside AWS: an
-#     S3 interface endpoint with private DNS (the bucket's name resolves to
-#     it inside the VPC and over the VPN) and an AWS Client VPN endpoint
-#     (mutual TLS, split tunnel: only the VPC's range goes through it). Both
-#     bill by the hour, so turn vpn off when no one needs it.
+# With vpn = true: the way in for your people's browsers outside AWS. An S3
+# interface endpoint with private DNS (the bucket's name resolves to it
+# inside the VPC and over the VPN) and an AWS Client VPN endpoint (mutual
+# TLS, split tunnel: only the VPC's range goes through it). Both bill by the
+# hour, so turn vpn off when no one needs it.
 #
 # The VPN's certificates here are made by Terraform (a CA, a server and one
 # client certificate, kept in the state): fine to try it, but for real use
-# issue client certificates per person from a CA you keep outside the state.
-
-data "aws_region" "current" {}
-
-data "aws_availability_zones" "up" {
-  state = "available"
-}
-
-locals {
-  region = data.aws_region.current.region
-  zones  = length(var.zone_names) > 0 ? var.zone_names : slice(data.aws_availability_zones.up.names, 0, var.zones)
-}
-
-resource "aws_vpc" "this" {
-  cidr_block           = var.cidr
-  enable_dns_support   = true # both, for the interface endpoint's private DNS
-  enable_dns_hostnames = true
-  tags                 = { Name = var.name }
-}
-
-resource "aws_internet_gateway" "this" {
-  vpc_id = aws_vpc.this.id
-  tags   = { Name = var.name }
-}
-
-resource "aws_subnet" "public" {
-  count                   = length(local.zones)
-  vpc_id                  = aws_vpc.this.id
-  availability_zone       = local.zones[count.index]
-  cidr_block              = cidrsubnet(var.cidr, 8, count.index)
-  map_public_ip_on_launch = true
-  tags                    = { Name = "${var.name}-public-${local.zones[count.index]}" }
-}
-
-resource "aws_route_table" "public" {
-  vpc_id = aws_vpc.this.id
-  route {
-    cidr_block = "0.0.0.0/0"
-    gateway_id = aws_internet_gateway.this.id
-  }
-  tags = { Name = "${var.name}-public" }
-}
-
-resource "aws_route_table_association" "public" {
-  count          = length(aws_subnet.public)
-  subnet_id      = aws_subnet.public[count.index].id
-  route_table_id = aws_route_table.public.id
-}
-
-resource "aws_vpc_endpoint" "s3_gateway" {
-  vpc_id            = aws_vpc.this.id
-  service_name      = "com.amazonaws.${local.region}.s3"
-  vpc_endpoint_type = "Gateway"
-  route_table_ids   = [aws_route_table.public.id]
-  tags              = { Name = "${var.name}-s3-gateway" }
-}
-
-# --- the VPN (vpn = true) ----------------------------------------------------
+# issue client certificates per person from a CA you keep outside the state,
+# or use SAML / IAM Identity Center authentication.
 
 resource "aws_security_group" "endpoint" {
   count       = var.vpn ? 1 : 0
@@ -236,9 +172,8 @@ resource "aws_ec2_client_vpn_authorization_rule" "vpc" {
 }
 
 locals {
-  # The endpoint's own DNS name, for the studio's browser.endpoint (the
+  # The endpoint's own DNS name, for the Add environment form's browser endpoint (the
   # links are then signed for it, and resolve without private DNS).
   interface_dns = var.vpn ? trimprefix(aws_vpc_endpoint.s3_interface[0].dns_entry[0].dns_name, "*.") : ""
   vpn_host      = var.vpn ? trimprefix(aws_ec2_client_vpn_endpoint.this[0].dns_name, "*.") : ""
 }
-

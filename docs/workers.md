@@ -1,6 +1,6 @@
 # Running workers
 
-Workers are temperwork's compiled worker, `temperwork-worker`, packaged in container images. They run in your account with the role this repository creates. They take work from your queues, read inputs from your bucket, write outputs back, and call temperwork.com only to hold a lease for their certificate.
+Workers are temperwork's compiled worker, `temperwork-worker`, packaged in container images. They run in your account with the role this repository creates. They take work from your queues, read inputs from your data bucket, write outputs back to it, update run records in the control bucket, and call temperwork.com only to hold a lease for their certificate.
 
 ## Images
 
@@ -26,7 +26,8 @@ terraform output worker_env
 | Variable | Value |
 |---|---|
 | `STUDIO_CONNECTION_ID` | The id you gave the environment in the studio |
-| `STUDIO_CONTROL_URI` | `worker_env.STUDIO_CONTROL_URI` |
+| `STUDIO_CONTROL_URI` | `worker_env.STUDIO_CONTROL_URI`: the control bucket's `.studio/` |
+| `STUDIO_LORA_URI` | `worker_env.STUDIO_LORA_URI`: the data bucket's `<prefix>loras/`, where trainings put LoRAs |
 | `STUDIO_QUEUE_URL` | `worker_env.STUDIO_QUEUE_URL` (runs) |
 | `STUDIO_TRAIN_QUEUE_URL` | `worker_env.STUDIO_TRAIN_QUEUE_URL` (trainer pods) |
 | `AWS_REGION` | `worker_env.AWS_REGION` |
@@ -51,7 +52,7 @@ Set `enroll_token_parameter = "/studio/enroll-token"` in Terraform so the worker
 
 ## EC2
 
-[`deploy/ec2-user-data.sh`](../deploy/ec2-user-data.sh) is the whole setup. It runs one pod container per GPU and, optionally, a judge worker beside them. It shuts the instance down when every worker has left.
+[`modules/temperwork/ec2-user-data.sh`](../modules/temperwork/ec2-user-data.sh) (also `terraform output ec2_user_data_path`) is the whole setup. It runs one pod container per GPU and, optionally, a judge worker beside them. It shuts the instance down when every worker has left.
 
 1. Fill in the settings block at the top of the script from `terraform output`.
 2. Launch a GPU instance on the **AWS Deep Learning Base GPU AMI (Amazon Linux 2023)**:
@@ -64,7 +65,7 @@ aws ec2 run-instances \
   --metadata-options HttpTokens=required,HttpPutResponseHopLimit=2 \
   --instance-initiated-shutdown-behavior terminate \
   --block-device-mappings 'DeviceName=/dev/xvda,Ebs={VolumeSize=200}' \
-  --user-data file://deploy/ec2-user-data.sh
+  --user-data file://$(terraform output -raw ec2_user_data_path)
 ```
 
 - `HttpPutResponseHopLimit=2` lets the containers reach the instance profile's credentials.
@@ -77,7 +78,7 @@ If you keep the images in your own ECR, set `REGISTRY_LOGIN='ecr'` in the script
 
 ```hcl
 resource "aws_iam_role_policy_attachment" "ecr" {
-  role       = module.environment.worker_role_name
+  role       = module.temperwork.worker_role_name
   policy_arn = "arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryReadOnly"
 }
 ```

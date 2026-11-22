@@ -3,13 +3,17 @@
 #
 #   - SQS FIFO queues: runs (the pod service), trainings (trainer pods) and
 #     judges (judge workers), plus one per judge model you host
-#   - a data bucket: your datasets anywhere in it, the studio's outputs under
-#     <prefix>datasets/, and the records the studio shares with your workers
-#     under <prefix>.studio/ (the control prefix)
+#   - a data bucket: your datasets anywhere in it, and what your workers
+#     write (outputs under <prefix>datasets/, LoRAs under <prefix>loras/).
+#     The studio can't write to it, and can read it only through links that
+#     work from your network
+#   - a separate control bucket: the records the studio shares with your
+#     workers (execution records, pipeline snapshots, worker heartbeats,
+#     dataset manifests). The only S3 the studio reads and writes
 #   - a role the studio assumes (with an external id), allowed only to send
-#     to the queues, use the control prefix and sign links; and a bucket
-#     policy that lets those links read your data only from your network,
-#     so the studio can sign a link to a file but never fetch it itself
+#     to the queues, use the control bucket and sign links to the data; and
+#     a bucket policy on the data bucket that lets those links work only
+#     from your network, so the studio can sign a link but never fetch it
 #   - a role for your workers (attach it to your instances, tasks or pods),
 #     with Bedrock for judge workers' LLM steps
 
@@ -20,22 +24,25 @@ data "aws_caller_identity" "current" {}
 locals {
   region    = data.aws_region.current.region
   partition = data.aws_partition.current.partition
-  bucket    = var.bucket != "" ? var.bucket : aws_s3_bucket.data[0].bucket
-  control   = "${var.prefix}.studio/"
   endpoints = compact(distinct(concat([var.vpc_endpoint_id], var.vpc_endpoint_ids)))
 
-  # The bucket policy's test for "outside your network", by mode. A request
-  # through a VPC endpoint carries aws:SourceVpce and no aws:SourceIp, and a
-  # negated condition on a missing key is true: so in ip mode a request
-  # through any VPC endpoint (one in another account's VPC included) is
-  # denied too, and in vpce mode any request from the internet.
+  bucket         = var.bucket != "" ? var.bucket : aws_s3_bucket.data[0].bucket
+  bucket_arn     = "arn:${local.partition}:s3:::${local.bucket}"
+  control        = var.control_bucket != "" ? var.control_bucket : aws_s3_bucket.control[0].bucket
+  control_arn    = "arn:${local.partition}:s3:::${local.control}"
+  control_prefix = ".studio/" # the workers expect the control URI to end in .studio/
+  control_uri    = "s3://${local.control}/${local.control_prefix}"
+
+  # The data bucket policy's test for "outside your network", by mode. A
+  # request through a VPC endpoint carries aws:SourceVpce and no
+  # aws:SourceIp, and a negated condition on a missing key is true: so in ip
+  # mode a request through any VPC endpoint (one in another account's VPC
+  # included) is denied too, and in vpce mode any request from the internet.
   outside = {
     vpce = { test = "StringNotEquals", variable = "aws:SourceVpce", values = local.endpoints }
     ip   = { test = "NotIpAddress", variable = "aws:SourceIp", values = var.browser_cidrs }
   }
   deny = local.outside[var.browser_access == "ip" ? "ip" : "vpce"]
-
-  bucket_arn = "arn:${local.partition}:s3:::${local.bucket}"
 }
 
 # --- the data bucket -----------------------------------------------------------
@@ -64,6 +71,57 @@ resource "aws_s3_bucket_cors_configuration" "data" {
     allowed_headers = ["*"]
     max_age_seconds = 3600
   }
+}
+
+# --- the control bucket ------------------------------------------------------------
+# Only records: no datasets, outputs or models. The studio and your workers
+# both read and write it; nothing else in your account needs to.
+
+resource "aws_s3_bucket" "control" {
+  count  = var.control_bucket == "" ? 1 : 0
+  bucket = "${var.name}-control"
+}
+
+resource "aws_s3_bucket_public_access_block" "control" {
+  count                   = var.control_bucket == "" ? 1 : 0
+  bucket                  = aws_s3_bucket.control[0].id
+  block_public_acls       = true
+  block_public_policy     = true
+  ignore_public_acls      = true
+  restrict_public_buckets = true
+}
+
+resource "aws_s3_bucket_ownership_controls" "control" {
+  count  = var.control_bucket == "" ? 1 : 0
+  bucket = aws_s3_bucket.control[0].id
+  rule {
+    object_ownership = "BucketOwnerEnforced"
+  }
+}
+
+data "aws_iam_policy_document" "control" {
+  statement {
+    sid     = "TlsOnly"
+    effect  = "Deny"
+    actions = ["s3:*"]
+    principals {
+      type        = "*"
+      identifiers = ["*"]
+    }
+    resources = [local.control_arn, "${local.control_arn}/*"]
+    condition {
+      test     = "Bool"
+      variable = "aws:SecureTransport"
+      values   = ["false"]
+    }
+  }
+}
+
+resource "aws_s3_bucket_policy" "control" {
+  count      = var.control_bucket == "" ? 1 : 0
+  bucket     = aws_s3_bucket.control[0].id
+  policy     = data.aws_iam_policy_document.control.json
+  depends_on = [aws_s3_bucket_public_access_block.control]
 }
 
 # --- the queues ----------------------------------------------------------------
@@ -139,31 +197,46 @@ resource "aws_iam_role" "studio" {
       condition     = var.browser_access != "ip" || length(var.browser_cidrs) > 0
       error_message = "browser_access = ip needs browser_cidrs: the public IP ranges your browsers reach S3 from."
     }
+    precondition {
+      condition     = var.control_bucket == "" || var.control_bucket != var.bucket
+      error_message = "control_bucket must be a different bucket from bucket: the studio may write the control bucket, never your data's."
+    }
   }
 }
 
 data "aws_iam_policy_document" "studio" {
   statement {
-    sid       = "Queue"
+    sid       = "Queues"
     actions   = ["sqs:SendMessage", "sqs:GetQueueAttributes", "sqs:PurgeQueue"]
     resources = [aws_sqs_queue.runs.arn, aws_sqs_queue.trainings.arn, aws_sqs_queue.judges.arn]
   }
   statement {
-    sid       = "ControlPrefix"
+    sid       = "ControlRecords"
     actions   = ["s3:GetObject", "s3:PutObject"]
-    resources = ["${local.bucket_arn}/${local.control}*"]
+    resources = ["${local.control_arn}/${local.control_prefix}*"]
   }
   statement {
-    sid       = "ListControlPrefix"
+    sid       = "ListControlRecords"
     actions   = ["s3:ListBucket"]
-    resources = [local.bucket_arn]
+    resources = [local.control_arn]
+    condition {
+      test     = "StringLike"
+      variable = "s3:prefix"
+      values   = ["${local.control_prefix}*"]
+    }
   }
   # The links it signs for your browsers act as this role: allowed here, and
-  # limited to your network by the bucket policy below.
+  # limited to your network by the data bucket's policy below. Read only:
+  # the studio never writes your data.
   statement {
-    sid       = "SignLinks"
+    sid       = "SignDataLinks"
     actions   = ["s3:GetObject"]
     resources = ["${local.bucket_arn}/*"]
+  }
+  statement {
+    sid       = "SignListingLinks"
+    actions   = ["s3:ListBucket"]
+    resources = [local.bucket_arn]
   }
 }
 
@@ -178,48 +251,45 @@ resource "aws_iam_role_policy" "studio" {
 data "aws_iam_policy_document" "bucket" {
   source_policy_documents = var.bucket_policy_source_documents
 
-  statement {
-    sid     = "DataOnlyFromYourNetwork"
-    effect  = "Deny"
-    actions = ["s3:GetObject"]
-    principals {
-      type        = "AWS"
-      identifiers = [aws_iam_role.studio.arn]
-    }
-    not_resources = ["${local.bucket_arn}/${local.control}*"]
-    condition {
-      test     = local.deny.test
-      variable = local.deny.variable
-      values   = local.deny.values
+  # Not with browser_access = open: the studio's role may then read the data.
+  dynamic "statement" {
+    for_each = var.browser_access != "open" ? [1] : []
+    content {
+      sid     = "StudioReadsOnlyFromYourNetwork"
+      effect  = "Deny"
+      actions = ["s3:GetObject", "s3:ListBucket"]
+      principals {
+        type        = "AWS"
+        identifiers = [aws_iam_role.studio.arn]
+      }
+      resources = [local.bucket_arn, "${local.bucket_arn}/*"]
+      condition {
+        test     = local.deny.test
+        variable = local.deny.variable
+        values   = local.deny.values
+      }
     }
   }
+  # Belt and braces: whatever IAM policies are later attached to the studio's
+  # role, it can't change your data.
   statement {
-    sid     = "ListOnlyFromYourNetworkOutsideTheControlPrefix"
-    effect  = "Deny"
-    actions = ["s3:ListBucket"]
+    sid    = "StudioNeverWrites"
+    effect = "Deny"
+    actions = [
+      "s3:PutObject", "s3:DeleteObject", "s3:DeleteObjectVersion", "s3:PutObjectAcl",
+      "s3:PutBucketPolicy", "s3:DeleteBucketPolicy", "s3:PutBucketCORS",
+    ]
     principals {
       type        = "AWS"
       identifiers = [aws_iam_role.studio.arn]
     }
-    resources = [local.bucket_arn]
-    condition {
-      test     = "StringNotLike"
-      variable = "s3:prefix"
-      values   = ["${local.control}*"]
-    }
-    condition {
-      test     = local.deny.test
-      variable = local.deny.variable
-      values   = local.deny.values
-    }
+    resources = [local.bucket_arn, "${local.bucket_arn}/*"]
   }
 }
 
-# None with browser_access = open: the studio's role may then read the data.
 # With an existing bucket this replaces its policy: pass the statements it
 # already has in bucket_policy_source_documents to keep them.
 resource "aws_s3_bucket_policy" "data" {
-  count      = var.browser_access != "open" ? 1 : 0
   bucket     = local.bucket
   policy     = data.aws_iam_policy_document.bucket.json
   depends_on = [aws_s3_bucket_public_access_block.data]
@@ -306,14 +376,14 @@ data "aws_iam_policy_document" "worker" {
     }
   }
   statement {
-    sid       = "Data"
+    sid       = "Objects"
     actions   = ["s3:GetObject", "s3:PutObject"]
-    resources = ["${local.bucket_arn}/*"]
+    resources = ["${local.bucket_arn}/*", "${local.control_arn}/*"]
   }
   statement {
-    sid       = "ListData"
+    sid       = "List"
     actions   = ["s3:ListBucket"]
-    resources = [local.bucket_arn]
+    resources = [local.bucket_arn, local.control_arn]
   }
   dynamic "statement" {
     for_each = var.enroll_token_parameter != "" ? [1] : []

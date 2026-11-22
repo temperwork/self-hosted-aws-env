@@ -1,6 +1,7 @@
 #!/bin/bash
 # EC2 user data that runs a temperwork environment's workers on one instance.
-# See docs/workers.md.
+# See docs/workers.md. `terraform output` of the temperwork module fills in the
+# settings block below.
 #
 # On a GPU instance (the AWS Deep Learning Base GPU AMI, Amazon Linux 2023:
 # docker and the NVIDIA container toolkit) it runs the pod service, one
@@ -12,7 +13,7 @@
 # alone.
 #
 # Launch it:
-#   - with the environment module's instance profile (<name>-studio-worker),
+#   - with the module's worker instance profile (<name>-studio-worker),
 #     created with enroll_token_parameter set to TOKEN_PARAM below
 #   - in a subnet that reaches temperwork.com (workers call home for a
 #     lease), the image registry, Hugging Face (models download at boot) and S3
@@ -27,12 +28,13 @@
 # enrollment serves its restarts.
 set -euxo pipefail
 
-# --- your settings: the environment's outputs (worker_env, judge_worker_args) ---
+# --- your settings: the module's outputs (worker_env, judge_worker_args) ---
 IMAGE='<registry>/qwen-image:customer-prod-latest'   # the worker image temperwork gives you access to
 REGISTRY_LOGIN='none'          # ecr: log in to IMAGE's ECR registry with the profile; none: a public registry
 STUDIO_URL='https://temperwork.com'
 STUDIO_CONNECTION_ID='<the id you gave the environment>'
-STUDIO_CONTROL_URI='<worker_env STUDIO_CONTROL_URI>'
+STUDIO_CONTROL_URI='<worker_env STUDIO_CONTROL_URI>'   # in the control bucket
+STUDIO_LORA_URI='<worker_env STUDIO_LORA_URI>'         # in the data bucket
 AWS_REGION='us-west-2'
 QUEUE_URL='<worker_env STUDIO_QUEUE_URL>'   # the pod service's runs queue ('' : none)
 TRAIN_QUEUE_URL=''             # a trainer image's: worker_env STUDIO_TRAIN_QUEUE_URL
@@ -81,13 +83,13 @@ done
 set +x
 STUDIO_ENROLL_TOKEN=$(aws ssm get-parameter --region "$AWS_REGION" --name "$TOKEN_PARAM" --with-decryption \
   --query Parameter.Value --output text)
-export STUDIO_ENROLL_TOKEN STUDIO_URL STUDIO_CONNECTION_ID STUDIO_CONTROL_URI AWS_REGION
+export STUDIO_ENROLL_TOKEN STUDIO_URL STUDIO_CONNECTION_ID STUDIO_CONTROL_URI STUDIO_LORA_URI AWS_REGION
 set -x
 TOKEN=$(curl -sfX PUT http://169.254.169.254/latest/api/token -H 'X-aws-ec2-metadata-token-ttl-seconds: 300' || true)
 ITYPE=$(curl -sf -H "X-aws-ec2-metadata-token: $TOKEN" http://169.254.169.254/latest/meta-data/instance-type || true)
 
 common=(-d --stop-timeout 100 -e STUDIO_ENROLL_TOKEN -e STUDIO_URL
-        -e STUDIO_CONNECTION_ID -e STUDIO_CONTROL_URI -e AWS_REGION)
+        -e STUDIO_CONNECTION_ID -e STUDIO_CONTROL_URI -e STUDIO_LORA_URI -e AWS_REGION)
 [ -n "$ROOT_SHA256" ] && common+=(-e STUDIO_ROOT_SHA256="$ROOT_SHA256")
 names=()
 pod() {   # name, docker args for its device...

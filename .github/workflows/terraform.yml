@@ -23,7 +23,7 @@ jobs:
 
       - name: Validate
         run: |
-          for dir in modules/environment modules/network examples/complete examples/existing-network; do
+          for dir in modules/temperwork examples/complete examples/existing-network; do
             echo "::group::$dir"
             terraform -chdir="$dir" init -backend=false -input=false
             terraform -chdir="$dir" validate
@@ -31,11 +31,11 @@ jobs:
           done
 
       - name: Test
-        run: terraform -chdir=modules/environment test
+        run: terraform -chdir=modules/temperwork test
 
   shellcheck:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - name: ShellCheck
-        run: shellcheck deploy/*.sh
+        run: shellcheck modules/temperwork/*.sh

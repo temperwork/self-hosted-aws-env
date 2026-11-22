@@ -27,7 +27,13 @@ variable "external_id" {
 }
 
 variable "bucket" {
-  description = "An existing bucket for your data, or empty to make one named <name>-data."
+  description = "An existing bucket for your data, or empty to make one named <name>-data. The studio can read it only through links that work from your network, and never write to it."
+  type        = string
+  default     = ""
+}
+
+variable "control_bucket" {
+  description = "An existing, empty bucket for the studio's records (not your data's bucket), or empty to make one named <name>-control."
   type        = string
   default     = ""
 }
@@ -39,7 +45,7 @@ variable "bucket_policy_source_documents" {
 }
 
 variable "prefix" {
-  description = "Where in the bucket the studio's outputs (<prefix>datasets/) and the control prefix (<prefix>.studio/) go. Ends with a slash."
+  description = "Where in the data bucket your workers write outputs (<prefix>datasets/) and LoRAs (<prefix>loras/). Ends with a slash."
   type        = string
   default     = "studio/"
   validation {
@@ -106,7 +112,7 @@ variable "judge_models" {
 }
 
 variable "enroll_token_parameter" {
-  description = "Optional: the name of an SSM parameter (e.g. /studio/enroll-token) holding the workers' enrollment token. The workers' role may then read it, as deploy/ec2-user-data.sh does."
+  description = "Optional: the name of an SSM parameter (e.g. /studio/enroll-token) holding the workers' enrollment token. The workers' role may then read it, as ec2-user-data.sh does."
   type        = string
   default     = ""
   validation {

@@ -198,8 +198,6 @@ The module has no `provider` block. It uses your `aws` provider and its region. 
 | `prefix` | `"temperwork/"` | Where in the data bucket workers write outputs and LoRAs. |
 | `temperwork_origins` | `["https://temperwork.com"]` | Origins allowed by the data bucket's CORS rule. |
 | `vpc_endpoint_id`, `vpc_endpoint_ids` | (one required) | Your S3 VPC endpoints: the only way temperwork's links to your data work. |
-| `worker_principals` | EC2, ECS tasks | Services that can assume the worker role. Add `pods.eks.amazonaws.com` for EKS. |
-| `worker_assumers` | `[]` | IAM principals that can assume the worker role (workers outside AWS). |
 | `judge_models` | `[]` | Self-hosted judge models. Each gets a queue. |
 | `enroll_token_parameter` | `""` | An SSM parameter holding the enrollment token. The worker role can then read it. |
 

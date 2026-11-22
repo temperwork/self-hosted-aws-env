@@ -36,7 +36,7 @@ terraform output worker_env
 
 A judge worker takes `STUDIO_JUDGE_QUEUE_URL` (or the flags in `terraform output judge_worker_args`). If you host judge models, it also takes `STUDIO_QUEUES` from `terraform output judge_worker_env`.
 
-Workers on AWS need **no access keys**: the SDK picks up the role. Don't set `STUDIO_AWS_ROLE_ARN` on AWS.
+Workers on EC2 need **no access keys**: the SDK picks up the role from the instance profile.
 
 A pod serves one base model. Give a runs queue only pods of one model. A worker leaves when its queue has been empty for a while (`STUDIO_POD_IDLE_S`, `STUDIO_JUDGE_IDLE_S`), or when its certificate is revoked.
 
@@ -94,7 +94,7 @@ Whatever runs them, a worker only needs to reach the same things:
 - **The data bucket**: it reads inputs and writes outputs.
 - **temperwork.com**: it enrolls, then holds a lease for its certificate.
 
-The control plane only ever talks to the queues and the control bucket, so it doesn't matter to temperwork where your workers run. Give them credentials with the permissions of the `<name>-tw-worker` role, and the settings above.
+The control plane only ever talks to the queues and the control bucket, so it doesn't matter to temperwork where your workers run. The `<name>-tw-worker` role trusts only EC2, so elsewhere give your workers credentials of your own with the same permissions, and the settings above.
 
 ## Scaling
 

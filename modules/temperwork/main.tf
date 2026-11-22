@@ -236,25 +236,13 @@ resource "aws_s3_bucket_policy" "data" {
 
 # --- your workers ----------------------------------------------------------------------
 
+# EC2 only: attach it to your instances with the instance profile below.
 data "aws_iam_policy_document" "worker_trust" {
   statement {
-    actions = ["sts:AssumeRole", "sts:TagSession"]
+    actions = ["sts:AssumeRole"]
     principals {
       type        = "Service"
-      identifiers = var.worker_principals
-    }
-  }
-
-  # Workers outside AWS: an IAM principal's keys, used only to assume this
-  # role (STUDIO_AWS_ROLE_ARN in the pod service).
-  dynamic "statement" {
-    for_each = length(var.worker_assumers) > 0 ? [1] : []
-    content {
-      actions = ["sts:AssumeRole"]
-      principals {
-        type        = "AWS"
-        identifiers = var.worker_assumers
-      }
+      identifiers = ["ec2.amazonaws.com"]
     }
   }
 }

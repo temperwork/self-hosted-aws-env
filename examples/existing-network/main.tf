@@ -37,8 +37,6 @@ module "temperwork" {
 
   vpc_endpoint_ids = var.vpc_endpoint_ids
 
-  worker_principals      = var.worker_principals
-  worker_assumers        = var.worker_assumers
   judge_models           = var.judge_models
   enroll_token_parameter = var.enroll_token_parameter
 }

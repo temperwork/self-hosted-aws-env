@@ -84,10 +84,7 @@ Only traffic inside your VPC, or on a VPN into it, can come through your endpoin
 
 Your workers are the data plane's compute. This is the role they run with.
 
-**Who can assume it.**
-
-- The services in `worker_principals`: by default `ec2.amazonaws.com` and `ecs-tasks.amazonaws.com`. Add `pods.eks.amazonaws.com` for EKS Pod Identity.
-- Any IAM principals in `worker_assumers`, for workers outside AWS (for example `arn:aws:iam::<account>:user/gpu-host`, ...).
+**Who can assume it.** Only EC2 (`ec2.amazonaws.com`), through the `<name>-tw-worker` instance profile you launch your workers with.
 
 **What it can do:**
 

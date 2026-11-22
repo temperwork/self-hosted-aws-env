@@ -21,9 +21,6 @@ vpc_endpoint_ids = ["vpce-0123456789abcdef0"]
 # To use one you already have (empty, and not your data's bucket):
 # control_bucket = "acme-temperwork-control"
 
-# EKS Pod Identity:
-# worker_principals = ["ec2.amazonaws.com", "ecs-tasks.amazonaws.com", "pods.eks.amazonaws.com"]
-
 tags = {
   project = "temperwork"
 }

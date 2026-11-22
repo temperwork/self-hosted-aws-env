@@ -45,7 +45,7 @@ output "control_plane_role_arn" {
 }
 
 output "worker_role_arn" {
-  description = "The workers' role: STUDIO_AWS_ROLE_ARN for a worker outside AWS (with worker_assumers)."
+  description = "The workers' role (EC2)."
   value       = aws_iam_role.worker.arn
 }
 

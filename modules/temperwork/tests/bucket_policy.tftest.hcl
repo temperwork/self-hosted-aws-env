@@ -201,3 +201,17 @@ run "workers_cannot_enable_or_list_models" {
     error_message = "the workers' role has no AWS Marketplace access and no Bedrock list actions"
   }
 }
+
+run "workers_role_is_ec2_only" {
+  command = apply
+  variables {
+    vpc_endpoint_id = "vpce-gateway"
+  }
+  assert {
+    condition = length(data.aws_iam_policy_document.worker_trust.statement) == 1 && alltrue([
+      for st in data.aws_iam_policy_document.worker_trust.statement :
+      one(st.principals).type == "Service" && one(st.principals).identifiers == toset(["ec2.amazonaws.com"])
+    ])
+    error_message = "only EC2 may assume the workers' role"
+  }
+}

@@ -72,18 +72,6 @@ variable "vpc_endpoint_ids" {
   default     = []
 }
 
-variable "worker_principals" {
-  description = "AWS services that may assume the workers' role. Add pods.eks.amazonaws.com for EKS Pod Identity."
-  type        = list(string)
-  default     = ["ec2.amazonaws.com", "ecs-tasks.amazonaws.com"]
-}
-
-variable "worker_assumers" {
-  description = "IAM users or roles (ARNs) that may assume the workers' role: for GPUs outside AWS, which can't be given a role directly."
-  type        = list(string)
-  default     = []
-}
-
 variable "judge_models" {
   description = "Judge models you host yourselves (e.g. qwen3-vl-8b): each gets a queue its model pods take grading work from. Empty: judge steps on those models call the model's API instead."
   type        = list(string)

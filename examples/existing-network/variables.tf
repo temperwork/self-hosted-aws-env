@@ -56,18 +56,6 @@ variable "vpc_endpoint_ids" {
   default     = []
 }
 
-variable "worker_principals" {
-  description = "AWS services that may assume the workers' role."
-  type        = list(string)
-  default     = ["ec2.amazonaws.com", "ecs-tasks.amazonaws.com"]
-}
-
-variable "worker_assumers" {
-  description = "IAM users or roles that may assume the workers' role (workers outside AWS)."
-  type        = list(string)
-  default     = []
-}
-
 variable "judge_models" {
   description = "Judge models you host yourselves."
   type        = list(string)

@@ -4,9 +4,20 @@ Workers are temperwork's compiled worker, `temperwork-worker`, packaged in conta
 
 ## Images
 
-The worker images aren't published yet. Until they are, this repository is here to review: read the module and its policies, and run `terraform plan` or `apply` with `workers` and `judge_worker` left empty (the default), which creates the buckets, the roles and the judges queue but no model queues or workers.
+temperwork publishes the worker images on the GitHub Container Registry, public, so pulling them needs no sign-in:
 
-Once published, this section will say where to pull them from. Use their `customer-prod-latest` tags: those images trust only temperwork.com's certificate root.
+| Image | Model | Work |
+|---|---|---|
+| `ghcr.io/temperwork/qwen-image` | `qwen-image-edit-2511` | `inference` |
+| `ghcr.io/temperwork/lora-trainer` | `qwen-image-edit-2511` | `training` |
+| `ghcr.io/temperwork/ltx-video` | `ltx-2.5` | `inference` |
+| `ghcr.io/temperwork/ltx-trainer` | `ltx-2.5` | `training` |
+| `ghcr.io/temperwork/qwen-vl` | `qwen3-vl-8b`, `qwen2-audio-7b`, `qwen3.5-9b`, `qwopus-9b` | judge models (`judge_worker.models`) |
+| `ghcr.io/temperwork/judge-worker` | | the judge worker (`judge_worker.image`) |
+
+Use their `customer-prod-latest` tags, or a `customer-prod-sha-<commit>` tag to pin one build: those images trust only temperwork.com's certificate root. The workers' subnets must reach `ghcr.io` and `pkg-containers.githubusercontent.com` (where it serves the layers). If many instances pull from behind one NAT address and GitHub throttles them, log the instances in to `ghcr.io` with any GitHub account's token that can read packages.
+
+The images contain only temperwork's worker, the model's runtime and their dependencies; model weights download when a worker starts, under their authors' licenses. Each image carries its license and the third-party notices in `/usr/share/doc/temperwork/`.
 
 ## Workers, models and queues
 
@@ -23,13 +34,13 @@ temperwork sends work only to the queues your environment lists (the `environmen
 
 ```hcl
 workers = {
-  edit    = { model = "qwen-image-edit-2511", work = "inference", image = "<registry>/qwen-image:customer-prod-latest", instances = 1 }
-  trainer = { model = "qwen-image-edit-2511", work = "training", image = "<registry>/lora-trainer:customer-prod-latest" }
+  edit    = { model = "qwen-image-edit-2511", work = "inference", image = "ghcr.io/temperwork/qwen-image:customer-prod-latest", instances = 1 }
+  trainer = { model = "qwen-image-edit-2511", work = "training", image = "ghcr.io/temperwork/lora-trainer:customer-prod-latest" }
 }
 judge_worker = {
-  image     = "<registry>/judge-worker:customer-prod-latest"
+  image     = "ghcr.io/temperwork/judge-worker:customer-prod-latest"
   instances = 1
-  models    = { vl = { model = "qwen3-vl-8b", image = "<registry>/qwen-vl:customer-prod-latest" } }
+  models    = { vl = { model = "qwen3-vl-8b", image = "ghcr.io/temperwork/qwen-vl:customer-prod-latest" } }
 }
 ```
 
@@ -98,7 +109,7 @@ aws ec2 run-instances \
 - Each worker leaves once its queue has been empty for `IDLE_S` (default 600 s), and then the instance powers off. With `terminate`, it's gone, so you pay only while there's work.
 - Start instances when work waits, based on queue depth (`ApproximateNumberOfMessagesVisible`): by hand, or with your own scaling. temperwork doesn't start workers in your account.
 
-For an image in your own ECR, set `REGISTRY_LOGIN='ecr'` in the script and attach `AmazonEC2ContainerRegistryReadOnly` to `terraform output worker_role_name`.
+To pull from a copy in your own ECR instead, set `REGISTRY_LOGIN='ecr'` in the script and attach `AmazonEC2ContainerRegistryReadOnly` to `terraform output worker_role_name`.
 
 ## Running workers another way
 

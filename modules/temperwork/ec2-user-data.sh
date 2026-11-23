@@ -32,7 +32,7 @@ set -euxo pipefail
 # --- your settings: the module's outputs (worker_env, workers, judge_worker). Each
 # can also come from the environment (set, even to empty, it wins): the module's
 # EC2 workers set them that way ---
-IMAGE="${IMAGE-<registry>/qwen-image:customer-prod-latest}"   # the worker image temperwork gives you access to
+IMAGE="${IMAGE-ghcr.io/temperwork/qwen-image:customer-prod-latest}"   # a worker image (docs/workers.md, "Images")
 REGISTRY_LOGIN="${REGISTRY_LOGIN-none}"          # ecr: log in to IMAGE's ECR registry with the profile; none: a public registry
 STUDIO_URL="${STUDIO_URL-https://temperwork.com}"
 STUDIO_CONNECTION_ID="${STUDIO_CONNECTION_ID-<the id you gave the environment>}"
@@ -49,7 +49,7 @@ MODEL_QUEUE_URL="${MODEL_QUEUE_URL-}"     # inference, or a judge model's gradin
 MODEL_QUEUE_ID="${MODEL_QUEUE_ID-}"       # a judge model: its queue's id, conn:<id>:model:<model>
 JUDGE_QUEUE_URL="${JUDGE_QUEUE_URL-}"             # also run a judge worker here: judge_worker_args' --queue-url
 JUDGE_QUEUES="${JUDGE_QUEUES-}"           # the judge worker's self-hosted judge models' queues (judge_worker.env STUDIO_QUEUES)
-JUDGE_IMAGE="${JUDGE_IMAGE-}"                 # the judge worker image (<registry>/judge-worker:customer-prod-latest); empty: IMAGE's worker, without automation judges
+JUDGE_IMAGE="${JUDGE_IMAGE-}"                 # the judge worker image (ghcr.io/temperwork/judge-worker:customer-prod-latest); empty: IMAGE's worker, without automation judges
 TOKEN_PARAM="${TOKEN_PARAM-/temperwork/enroll-token}"   # the SSM parameter (SecureString) holding the enrollment token
 ROOT_SHA256="${ROOT_SHA256-}"                 # only for an image not pinned to temperwork.com's root (the customer images are): that root's fingerprint
 IDLE_S="${IDLE_S-600}"                     # a worker leaves after its queue has been empty this long (0: never; always-on workers)

@@ -4,14 +4,14 @@ Workers are temperwork's compiled worker, `temperwork-worker`, packaged in conta
 
 ## Images
 
-temperwork publishes the worker images on the GitHub Container Registry, public, so pulling them needs no sign-in:
+temperwork publishes the worker images on the GitHub Container Registry, public, so pulling them needs no sign-in. Each is named after the model it serves (the `model` field beside it); `qwen-vl` serves several judge models, one per instance:
 
 | Image | Model | Work |
 |---|---|---|
-| `ghcr.io/temperwork/qwen-image` | `qwen-image-edit-2511` | `inference` |
-| `ghcr.io/temperwork/lora-trainer` | `qwen-image-edit-2511` | `training` |
-| `ghcr.io/temperwork/ltx-video` | `ltx-2.5` | `inference` |
-| `ghcr.io/temperwork/ltx-trainer` | `ltx-2.5` | `training` |
+| `ghcr.io/temperwork/qwen-image-edit-2511` | `qwen-image-edit-2511` | `inference` |
+| `ghcr.io/temperwork/qwen-image-edit-2511-trainer` | `qwen-image-edit-2511` | `training` |
+| `ghcr.io/temperwork/ltx-2.5` | `ltx-2.5` | `inference` |
+| `ghcr.io/temperwork/ltx-2.5-trainer` | `ltx-2.5` | `training` |
 | `ghcr.io/temperwork/qwen-vl` | `qwen3-vl-8b`, `qwen2-audio-7b`, `qwen3.5-9b`, `qwopus-9b` | judge models (`judge_worker.models`) |
 | `ghcr.io/temperwork/judge-worker` | | the judge worker (`judge_worker.image`) |
 
@@ -34,8 +34,8 @@ temperwork sends work only to the queues your environment lists (the `environmen
 
 ```hcl
 workers = {
-  edit    = { model = "qwen-image-edit-2511", work = "inference", image = "ghcr.io/temperwork/qwen-image:customer-prod-latest", instances = 1 }
-  trainer = { model = "qwen-image-edit-2511", work = "training", image = "ghcr.io/temperwork/lora-trainer:customer-prod-latest" }
+  edit    = { model = "qwen-image-edit-2511", work = "inference", image = "ghcr.io/temperwork/qwen-image-edit-2511:customer-prod-latest", instances = 1 }
+  trainer = { model = "qwen-image-edit-2511", work = "training", image = "ghcr.io/temperwork/qwen-image-edit-2511-trainer:customer-prod-latest" }
 }
 judge_worker = {
   image     = "ghcr.io/temperwork/judge-worker:customer-prod-latest"

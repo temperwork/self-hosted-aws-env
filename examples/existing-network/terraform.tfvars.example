@@ -26,8 +26,8 @@ vpc_endpoint_ids = ["vpce-0123456789abcdef0"]
 # they run); 0 means you run them your own way. Store the enrollment token
 # in SSM first: see docs/workers.md.
 # workers = {
-#   edit    = { model = "qwen-image-edit-2511", work = "inference", image = "ghcr.io/temperwork/qwen-image:customer-prod-latest", instances = 1 }
-#   trainer = { model = "qwen-image-edit-2511", work = "training", image = "ghcr.io/temperwork/lora-trainer:customer-prod-latest" }
+#   edit    = { model = "qwen-image-edit-2511", work = "inference", image = "ghcr.io/temperwork/qwen-image-edit-2511:customer-prod-latest", instances = 1 }
+#   trainer = { model = "qwen-image-edit-2511", work = "training", image = "ghcr.io/temperwork/qwen-image-edit-2511-trainer:customer-prod-latest" }
 # }
 # judge_worker = {
 #   image     = "ghcr.io/temperwork/judge-worker:customer-prod-latest"

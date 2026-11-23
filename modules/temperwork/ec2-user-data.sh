@@ -32,7 +32,7 @@ set -euxo pipefail
 # --- your settings: the module's outputs (worker_env, workers, judge_worker). Each
 # can also come from the environment (set, even to empty, it wins): the module's
 # EC2 workers set them that way ---
-IMAGE="${IMAGE-ghcr.io/temperwork/qwen-image:customer-prod-latest}"   # a worker image (docs/workers.md, "Images")
+IMAGE="${IMAGE-ghcr.io/temperwork/qwen-image-edit-2511:customer-prod-latest}"   # a worker image (docs/workers.md, "Images")
 REGISTRY_LOGIN="${REGISTRY_LOGIN-none}"          # ecr: log in to IMAGE's ECR registry with the profile; none: a public registry
 STUDIO_URL="${STUDIO_URL-https://temperwork.com}"
 STUDIO_CONNECTION_ID="${STUDIO_CONNECTION_ID-<the id you gave the environment>}"
